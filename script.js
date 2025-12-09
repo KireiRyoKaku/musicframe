@@ -375,9 +375,9 @@ async function handleGoogleSignIn() {
 
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    provider.addScope('profile');
-    provider.addScope('email');
-    
+    provider.addScope("profile");
+    provider.addScope("email");
+
     console.log("Starting sign-in with popup...");
     const result = await auth.signInWithPopup(provider);
     const user = result.user;
@@ -405,16 +405,21 @@ async function handleGoogleSignIn() {
     console.log("User signed in successfully:", currentUser.email);
 
     // Show main content and hide login
+    console.log("Calling showMainContent...");
     showMainContent();
+    console.log("showMainContent completed");
+    
+    // Force update display
+    await updateDisplay();
   } catch (error) {
     console.error("Sign-in error:", error);
-    
-    if (error.code === 'auth/popup-blocked') {
+
+    if (error.code === "auth/popup-blocked") {
       await showCustomAlert(
         "Pop-up was blocked. Please allow pop-ups for this site and try again.",
         "Pop-up Blocked"
       );
-    } else if (error.code === 'auth/popup-closed-by-user') {
+    } else if (error.code === "auth/popup-closed-by-user") {
       console.log("User closed the sign-in popup");
     } else {
       await showCustomAlert(`Sign-in failed: ${error.message}`, "Error");
@@ -447,15 +452,24 @@ function sanitizeText(text) {
 
 // Show main content after login
 function showMainContent() {
-  const loginOverlay = DOMCache.get("loginOverlay");
-  const mainContent = DOMCache.get("mainContent");
-  const userName = DOMCache.get("userName");
-  const userImage = DOMCache.get("userImage");
-  const moderatorBadge = DOMCache.get("moderatorBadge");
-  const moderatorActions = DOMCache.get("moderatorActions");
+  console.log("showMainContent called, currentUser:", currentUser);
+  
+  const loginOverlay = document.getElementById("loginOverlay");
+  const mainContent = document.getElementById("mainContent");
+  const userName = document.getElementById("userName");
+  const userImage = document.getElementById("userImage");
+  const moderatorBadge = document.getElementById("moderatorBadge");
+  const moderatorActions = document.getElementById("moderatorActions");
 
-  loginOverlay?.classList.add("hidden");
-  mainContent?.classList.remove("hidden");
+  console.log("Elements found:", {
+    loginOverlay: !!loginOverlay,
+    mainContent: !!mainContent,
+    userName: !!userName,
+    userImage: !!userImage
+  });
+
+  if (loginOverlay) loginOverlay.classList.add("hidden");
+  if (mainContent) mainContent.classList.remove("hidden");
 
   // Update user info display (textContent is safe from XSS)
   if (userName) userName.textContent = currentUser.name;
@@ -463,12 +477,14 @@ function showMainContent() {
 
   // Show moderator badge if user is a moderator
   if (isModerator(currentUser.email)) {
-    moderatorBadge?.classList.remove("hidden");
-    moderatorActions?.classList.remove("hidden");
+    if (moderatorBadge) moderatorBadge.classList.remove("hidden");
+    if (moderatorActions) moderatorActions.classList.remove("hidden");
   } else {
-    moderatorBadge?.classList.add("hidden");
-    moderatorActions?.classList.add("hidden");
+    if (moderatorBadge) moderatorBadge.classList.add("hidden");
+    if (moderatorActions) moderatorActions.classList.add("hidden");
   }
+
+  console.log("Main content should now be visible");
 
   // Initialize the main app
   updateDisplay();
