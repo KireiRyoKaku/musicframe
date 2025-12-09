@@ -363,6 +363,9 @@ function isModerator(email) {
 
 // Google Sign-In callback
 async function handleGoogleSignIn() {
+  console.log("Current origin:", window.location.origin);
+  console.log("Current hostname:", window.location.hostname);
+
   if (!auth) {
     await showCustomAlert(
       "Authentication not initialized. Please refresh the page."
