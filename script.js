@@ -408,7 +408,7 @@ async function handleGoogleSignIn() {
     console.log("Calling showMainContent...");
     showMainContent();
     console.log("showMainContent completed");
-    
+
     // Force update display
     await updateDisplay();
   } catch (error) {
@@ -453,7 +453,7 @@ function sanitizeText(text) {
 // Show main content after login
 function showMainContent() {
   console.log("showMainContent called, currentUser:", currentUser);
-  
+
   const loginOverlay = document.getElementById("loginOverlay");
   const mainContent = document.getElementById("mainContent");
   const userName = document.getElementById("userName");
@@ -465,7 +465,7 @@ function showMainContent() {
     loginOverlay: !!loginOverlay,
     mainContent: !!mainContent,
     userName: !!userName,
-    userImage: !!userImage
+    userImage: !!userImage,
   });
 
   if (loginOverlay) loginOverlay.classList.add("hidden");
