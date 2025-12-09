@@ -375,22 +375,11 @@ async function handleGoogleSignIn() {
 
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    // Use redirect instead of popup - works better with GitHub Pages
-    await auth.signInWithRedirect(provider);
-  } catch (error) {
-    console.error("Sign-in error:", error);
-    await showCustomAlert("Sign-in failed. Please try again.", "Error");
-  }
-}
-
-// Handle redirect result after Google sign-in
-async function handleRedirectResult() {
-  try {
-    const result = await auth.getRedirectResult();
-    if (!result.user) {
-      return; // No redirect result
-    }
-
+    provider.addScope('profile');
+    provider.addScope('email');
+    
+    console.log("Starting sign-in with popup...");
+    const result = await auth.signInWithPopup(provider);
     const user = result.user;
 
     // Check if user is in the allowed list
@@ -418,7 +407,18 @@ async function handleRedirectResult() {
     // Show main content and hide login
     showMainContent();
   } catch (error) {
-    console.error("Redirect result error:", error);
+    console.error("Sign-in error:", error);
+    
+    if (error.code === 'auth/popup-blocked') {
+      await showCustomAlert(
+        "Pop-up was blocked. Please allow pop-ups for this site and try again.",
+        "Pop-up Blocked"
+      );
+    } else if (error.code === 'auth/popup-closed-by-user') {
+      console.log("User closed the sign-in popup");
+    } else {
+      await showCustomAlert(`Sign-in failed: ${error.message}`, "Error");
+    }
   }
 }
 
@@ -597,11 +597,6 @@ function signOut() {
 
 // Initialize the page
 async function init() {
-  // Handle redirect result first
-  if (auth) {
-    await handleRedirectResult();
-  }
-
   // Check if user is already logged in
   const storedUser = localStorage.getItem("user");
   if (storedUser) {
