@@ -626,11 +626,11 @@ async function init() {
 // Setup event listeners
 function setupEventListeners() {
   console.log("Setting up event listeners...");
-  
+
   // Google Sign-In button
   const googleSignInBtn = document.getElementById("googleSignInBtn");
   console.log("Google Sign-In button found:", !!googleSignInBtn);
-  
+
   if (googleSignInBtn) {
     googleSignInBtn.addEventListener("click", () => {
       console.log("Google Sign-In button clicked!");
