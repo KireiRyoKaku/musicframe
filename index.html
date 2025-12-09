@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Musicframe - Monthly Music Reviews</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-container">
+            <h1 class="login-title">Musicframe</h1>
+            <p class="feature-tooltip" id="loginFeatureTooltip">Add albums</p>
+            <p class="login-subtitle">Sign in to access your music reviews</p>
+            <div id="g_id_onload"
+                 data-client_id="964158836468-uo0ndfhgit29sgl61u1jvkug9csuo4ld.apps.googleusercontent.com"
+                 data-callback="handleCredentialResponse"
+                 data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin"
+                 data-type="standard"
+                 data-size="large"
+                 data-theme="filled_blue"
+                 data-text="sign_in_with"
+                 data-shape="rectangular"
+                 data-logo_alignment="left">
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="main-content hidden">
+        <div class="container">
+            <!-- Header with Title and User Info -->
+            <header class="site-header">
+                <div class="title-container">
+                    <h1>Musicframe</h1>
+                    <p class="feature-tooltip" id="mainFeatureTooltip">Add albums</p>
+                </div>
+                
+                <!-- Navigation with Year/Month and Arrows -->
+                <nav class="month-navigation">
+                    <button class="nav-arrow" id="prevMonth" aria-label="Previous month">‹</button>
+                    <div class="current-period">
+                        <span id="currentMonth">December</span>
+                        <span id="currentYear">2025</span>
+                    </div>
+                    <button class="nav-arrow" id="nextMonth" aria-label="Next month">›</button>
+                </nav>
+                
+                <div class="user-info">
+                    <img id="userImage" src="" alt="User" class="user-avatar">
+                    <div class="user-details">
+                        <span id="userName" class="user-name"></span>
+                        <span id="moderatorBadge" class="moderator-badge hidden">MODERATOR</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button id="signOutBtn" class="sign-out-btn">Sign Out</button>
+                        <button id="leaveDiscussionBtn" class="sign-out-btn" style="background: linear-gradient(135deg, #dc2626, #b91c1c); display: none;">Leave Discussion</button>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Moderator Actions -->
+            <div id="moderatorActions" class="moderator-actions hidden" style="display: flex; gap: 10px; justify-content: flex-end; margin: 20px 0; flex-wrap: wrap; padding-right: 20px;">
+                <button id="migrateTracksBtn" class="join-discussion-btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); font-size: 0.9rem; padding: 10px 20px;" title="Fetch track listings for all existing albums">
+                    🔄 Fetch Tracks
+                </button>
+                <button id="endVotingBtn" class="join-discussion-btn" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); font-size: 0.9rem; padding: 10px 20px;">
+                    🛑 End Voting
+                </button>
+                <button id="resetVotingBtn" class="join-discussion-btn" style="display: none; background: linear-gradient(135deg, #f59e0b, #d97706); font-size: 0.9rem; padding: 10px 20px;">
+                    🔄 Reset Voting
+                </button>
+            </div>
+
+            <!-- Participants Section -->
+            <section class="participants-section">
+                <h2>Participants</h2>
+                <button id="joinDiscussionBtn" class="join-discussion-btn">
+                    + Join This Month's Discussion
+                </button>
+                <div class="participants-list" id="participantsList">
+                    <div class="participant">Alex</div>
+                    <div class="participant">Jordan</div>
+                    <div class="participant">Sam</div>
+                    <div class="participant">Casey</div>
+                </div>
+            </section>
+
+            <!-- Albums Section -->
+            <section class="albums-section">
+                <h2>This Month's Albums</h2>
+                <div id="votingModeTitle" style="text-align: center; margin: -10px 0 20px 0; font-size: 1.3rem; font-weight: 600; color: #ffd700; text-shadow: 0 2px 8px rgba(255, 215, 0, 0.4); display: none;">
+                    ⏰ TIME TO CHOOSE
+                </div>
+                <div id="votingStatusMessage" style="text-align: center; margin: 10px 0; font-size: 1.1rem; color: #ffd700; display: none;">
+                </div>
+                <div style="text-align: center; margin: 20px 0;">
+                    <button id="addAlbumBtn" class="join-discussion-btn">
+                        + Add Your Album
+                    </button>
+                </div>
+                <div class="albums-grid" id="albumsGrid">
+                    <!-- Album covers will be displayed here dynamically -->
+                </div>
+                <div style="text-align: center; margin: 20px 0;">
+                    <button id="startVotingBtn" class="join-discussion-btn">
+                        🗳️ Start this month's voting now!
+                    </button>
+                    <button id="submitVotesBtn" class="join-discussion-btn" style="display: none; margin-left: 10px; background: linear-gradient(135deg, #48bb78, #38a169);">
+                        ✅ Submit My Votes
+                    </button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Voting Started Overlay -->
+    <div id="votingOverlay" class="voting-overlay hidden">
+        <div class="voting-overlay-content">
+            <h1 class="voting-overlay-title">🗳️ VOTING HAS STARTED!</h1>
+            <p class="voting-overlay-subtitle">Cast your votes now</p>
+        </div>
+    </div>
+
+    <!-- Add Album Modal -->
+    <div id="addAlbumModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Add Your Album</h2>
+                <button class="modal-close" id="closeAddAlbumModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">Paste your YouTube Music album link below</p>
+                <input 
+                    type="text" 
+                    id="albumLinkInput" 
+                    class="modal-input" 
+                    placeholder="https://music.youtube.com/playlist?list=..."
+                    autocomplete="off"
+                />
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelAddAlbum">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmAddAlbum">Add Album</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Links Modal -->
+    <div id="editLinksModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Edit External Links</h2>
+                <button class="modal-close" id="closeEditLinksModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">Edit YouTube Music link and manage all external links for this album</p>
+                <div id="youtubeEditContainer" class="youtube-edit-container"></div>
+                <div id="editLinksContainer" class="edit-links-container"></div>
+                <button class="modal-btn modal-btn-secondary" id="addNewLinkBtn" style="width: 100%; margin-bottom: 20px;">
+                    + Add New Link
+                </button>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelEditLinks">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="saveEditLinks">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lock Confirmation Modal -->
+    <div id="lockConfirmModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Lock Your Selection</h2>
+                <button class="modal-close" id="closeLockConfirmModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" style="color: #f0ad4e; margin-bottom: 20px;">
+                    ⚠️ If you lock in your suggestion, only a moderator can undo your selection.
+                </p>
+                <p class="modal-description">
+                    Are you sure you want to lock this album?
+                </p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelLock">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmLock">Lock Selection</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unlock Confirmation Modal -->
+    <div id="unlockConfirmModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Unlock Album</h2>
+                <button class="modal-close" id="closeUnlockConfirmModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Are you sure you want to unlock this album?
+                </p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelUnlock">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmUnlock">Unlock Album</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Locked Album Info Modal -->
+    <div id="lockedInfoModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Album Locked</h2>
+                <button class="modal-close" id="closeLockedInfoModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" id="lockedInfoMessage">
+                    This album is already locked in. Only a moderator can unlock it.
+                </p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-primary" id="closeLockedInfoBtn">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rate Track Modal -->
+    <div id="rateTrackModal" class="modal-overlay hidden">
+        <div class="modal-container modal-container-large">
+            <div class="modal-header">
+                <h2>Rate Track</h2>
+                <button class="modal-close" id="closeRateTrackModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" id="rateTrackName"></p>
+                
+                <!-- YouTube Player -->
+                <div class="track-player-container">
+                    <div id="trackPlayer"></div>
+                </div>
+                
+                <div class="rating-options">
+                    <button class="rating-btn favorite-btn" id="rateFavorite">
+                        <span class="rating-emoji">⭐</span>
+                        <span>Favorite Track</span>
+                    </button>
+                    <button class="rating-btn least-btn" id="rateLeast">
+                        <span class="rating-emoji">💔</span>
+                        <span>Least Favorite Track</span>
+                    </button>
+                    <button class="rating-btn liked-btn" id="rateLiked">
+                        <span class="rating-emoji">👍</span>
+                        <span>Liked</span>
+                    </button>
+                    <button class="rating-btn disliked-btn" id="rateDisliked">
+                        <span class="rating-emoji">👎</span>
+                        <span>Disliked</span>
+                    </button>
+                </div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelRateTrack">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert Modal -->
+    <div id="customAlertModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Notice</h2>
+                <button class="modal-close" id="closeCustomAlert">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" id="customAlertMessage"></p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-primary" id="confirmCustomAlert">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voting Warning Modal -->
+    <div id="votingWarningModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>⚠️ Warning: Starting Voting</h2>
+                <button class="modal-close" id="closeVotingWarning">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    Make sure all participants have added their albums and are ready to vote.
+                </p>
+                <p class="modal-description">
+                    Once voting starts, everyone can cast their votes (3 points and 1 point).
+                </p>
+                <p class="modal-description" style="font-weight: 600; color: #f59e0b;">
+                    Do you want to proceed?
+                </p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelVotingWarning">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmVotingStart">Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Second Voting Confirmation Modal -->
+    <div id="votingConfirmModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 style="color: #ef4444;">⚠️ Final Confirmation</h2>
+                <button class="modal-close" id="closeVotingConfirm">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" style="font-size: 1.3rem; font-weight: 700; color: #ffffff; text-align: center; margin: 30px 0;">
+                    ARE YOU <strong style="color: #ef4444;">REALLY</strong> SURE?
+                </p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelVotingConfirm">no...</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmVotingGo" style="background: #10b981; font-weight: 700;">GO!</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Voting Confirmation Modal -->
+    <div id="resetVotingConfirmModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>🔄 Reset All Votes?</h2>
+                <button class="modal-close" id="closeResetVotingConfirm">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px;">This will clear ALL votes for this month and allow voting to start fresh.</p>
+                <p style="color: #ef4444; font-weight: 600;">⚠️ This action cannot be undone!</p>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn modal-btn-secondary" id="cancelResetVoting">Cancel</button>
+                <button class="modal-btn modal-btn-danger" id="confirmResetVoting">Yes, Reset All Votes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- End Voting Confirmation Modal -->
+    <div id="endVotingConfirmModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>🛑 End Voting Now?</h2>
+                <button class="modal-close" id="closeEndVotingConfirm">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" style="margin-bottom: 15px;">This will end the voting session immediately.</p>
+                <p class="modal-description" style="color: #f59e0b; font-weight: 600;">⚠️ Not all participants may have voted yet.</p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelEndVoting">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmEndVoting" style="background: linear-gradient(135deg, #dc2626, #b91c1c);">Yes, End Voting</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leave Discussion Confirmation Modal -->
+    <div id="leaveDiscussionModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2>Leave Discussion?</h2>
+                <button class="modal-close" id="closeLeaveDiscussion">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">Are you sure you want to leave this month's discussion?</p>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelLeaveDiscussion">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="confirmLeaveDiscussion" style="background: linear-gradient(135deg, #dc2626, #b91c1c);">Yes, Leave</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Voting Modal -->
+    <div id="votingModal" class="modal-overlay hidden">
+        <div class="modal-container modal-container-large">
+            <div class="modal-header">
+                <h2>Vote for Albums</h2>
+                <button class="modal-close" id="closeVotingModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description">
+                    You have <strong>2 votes</strong>: one worth <strong>3 points</strong> and one worth <strong>1 point</strong>.
+                    <br>You cannot vote for your own album.
+                </p>
+                <div id="votingAlbumsList" class="voting-albums-list">
+                    <!-- Albums will be populated here -->
+                </div>
+                <div class="modal-buttons">
+                    <button class="modal-btn modal-btn-cancel" id="cancelVoting">Cancel</button>
+                    <button class="modal-btn modal-btn-primary" id="submitVotes">Submit Votes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert/Confirm Modal -->
+    <div id="customAlertModal" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h2 id="customAlertTitle">Alert</h2>
+                <button class="modal-close" id="closeCustomAlert">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-description" id="customAlertMessage"></p>
+                <div class="modal-buttons" id="customAlertButtons">
+                    <button class="modal-btn modal-btn-primary" id="customAlertOk">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
