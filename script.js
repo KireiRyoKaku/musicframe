@@ -772,6 +772,14 @@ function setupEventListeners() {
     .getElementById("rateDisliked")
     ?.addEventListener("click", () => applyTrackRating("disliked"));
 
+  // Track Notes event listeners
+  document
+    .getElementById("notesVisibilityToggle")
+    ?.addEventListener("click", toggleNotesVisibility);
+  document
+    .getElementById("saveTrackNotes")
+    ?.addEventListener("click", saveTrackNotes);
+
   // Close modal on overlay click
   document.getElementById("rateTrackModal")?.addEventListener("click", (e) => {
     if (e.target.id === "rateTrackModal") {
@@ -2518,7 +2526,12 @@ function updateAlbums(albums) {
         // Add click handler to open rating modal
         trackItem.addEventListener("click", () => {
           if (currentUser) {
-            showRateTrackModal(album.id, track, album.trackRatings || {});
+            showRateTrackModal(
+              album.id,
+              track,
+              album.trackRatings || {},
+              album.trackNotes || {}
+            );
           }
         });
 
@@ -2643,13 +2656,23 @@ let currentRatingContext = null;
 let trackPlayer = null;
 
 // Show rate track modal
-async function showRateTrackModal(albumId, track, allTrackRatings) {
+async function showRateTrackModal(
+  albumId,
+  track,
+  allTrackRatings,
+  allTrackNotes = {}
+) {
   if (!currentUser) {
     await showCustomAlert("You must be signed in to rate tracks.");
     return;
   }
 
-  currentRatingContext = { albumId, track, currentRatings: allTrackRatings };
+  currentRatingContext = {
+    albumId,
+    track,
+    currentRatings: allTrackRatings,
+    currentNotes: allTrackNotes,
+  };
 
   const modal = document.getElementById("rateTrackModal");
   const trackNameEl = document.getElementById("rateTrackName");
@@ -2660,8 +2683,29 @@ async function showRateTrackModal(albumId, track, allTrackRatings) {
     .querySelectorAll(".rating-btn .rating-avatars")
     .forEach((el) => el.remove());
 
-  // Convert full trackRatings to track-specific format for avatar display
+  // Load user's notes if they exist
   const trackKey = `${track.position}-${track.title}`;
+  const userNote = allTrackNotes[currentUser.email];
+  const notesTextarea = document.getElementById("trackNotesTextarea");
+  const visibilityToggle = document.getElementById("notesVisibilityToggle");
+
+  if (userNote) {
+    notesTextarea.value = userNote.text || "";
+    if (userNote.visible) {
+      visibilityToggle.classList.remove("private");
+    } else {
+      visibilityToggle.classList.add("private");
+    }
+  } else {
+    notesTextarea.value = "";
+    visibilityToggle.classList.add("private"); // Default to private
+  }
+
+  // Display other users' visible notes
+  displayOtherUsersNotes(allTrackNotes);
+
+  // Convert full trackRatings to track-specific format for avatar display
+  // trackKey already declared above
   const trackSpecificRatings = {};
 
   Object.entries(allTrackRatings).forEach(([userEmail, userRating]) => {
@@ -2747,6 +2791,115 @@ async function showRateTrackModal(albumId, track, allTrackRatings) {
   // Load YouTube player if we have a video ID
   if (track.videoId) {
     loadTrackPlayer(track.videoId);
+  }
+}
+
+// Display other users' visible notes
+function displayOtherUsersNotes(allTrackNotes) {
+  const container = document.getElementById("otherUsersNotes");
+  container.innerHTML = "";
+
+  const visibleNotes = Object.entries(allTrackNotes).filter(
+    ([email, note]) => note.visible && email !== currentUser.email && note.text
+  );
+
+  if (visibleNotes.length === 0) {
+    return;
+  }
+
+  const title = document.createElement("div");
+  title.className = "other-users-notes-title";
+  title.textContent = "Community Notes";
+  container.appendChild(title);
+
+  visibleNotes.forEach(([email, note]) => {
+    const participant = window.currentParticipants?.find(
+      (p) => p.email === email
+    );
+    if (!participant) return;
+
+    const card = document.createElement("div");
+    card.className = "user-note-card";
+
+    const header = document.createElement("div");
+    header.className = "user-note-header";
+
+    const avatar = document.createElement("img");
+    avatar.className = "user-note-avatar";
+    avatar.src = participant.picture;
+    avatar.alt = participant.name;
+    avatar.onerror = () => {
+      const emoji = getAnimalEmojiForUser(email);
+      const emojiSpan = document.createElement("div");
+      emojiSpan.textContent = emoji;
+      emojiSpan.style.fontSize = "20px";
+      avatar.replaceWith(emojiSpan);
+    };
+
+    const name = document.createElement("div");
+    name.className = "user-note-name";
+    name.textContent = participant.name.split(" ")[0];
+
+    header.appendChild(avatar);
+    header.appendChild(name);
+
+    const text = document.createElement("div");
+    text.className = "user-note-text";
+    text.textContent = note.text;
+
+    card.appendChild(header);
+    card.appendChild(text);
+    container.appendChild(card);
+  });
+}
+
+// Toggle notes visibility
+function toggleNotesVisibility() {
+  const toggle = document.getElementById("notesVisibilityToggle");
+  toggle.classList.toggle("private");
+}
+
+// Save track notes
+async function saveTrackNotes() {
+  if (!db || !currentUser || !currentRatingContext) {
+    return;
+  }
+
+  const { albumId, track, currentNotes } = currentRatingContext;
+  const trackKey = `${track.position}-${track.title}`;
+  const textarea = document.getElementById("trackNotesTextarea");
+  const visibilityToggle = document.getElementById("notesVisibilityToggle");
+  const noteText = textarea.value.trim();
+  const isVisible = !visibilityToggle.classList.contains("private");
+
+  const updatedNotes = { ...currentNotes };
+
+  if (noteText) {
+    updatedNotes[currentUser.email] = {
+      text: noteText,
+      visible: isVisible,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    };
+  } else {
+    // Remove note if text is empty
+    delete updatedNotes[currentUser.email];
+  }
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      trackNotes: updatedNotes,
+    });
+
+    await showCustomAlert("Notes saved successfully!", "Success");
+
+    // Update context with new notes
+    currentRatingContext.currentNotes = updatedNotes;
+
+    // Refresh the display of other users' notes
+    displayOtherUsersNotes(updatedNotes);
+  } catch (error) {
+    console.error("Error saving track notes:", error);
+    await showCustomAlert(`Failed to save notes: ${error.message}`, "Error");
   }
 }
 

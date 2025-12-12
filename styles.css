@@ -1546,3 +1546,123 @@ body {
     transform: scale(1.05);
   }
 }
+
+/* Track Notes Section */
+.track-notes-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.track-notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.track-notes-header label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+
+.visibility-toggle {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.visibility-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.visibility-icon {
+  font-size: 1.2rem;
+  transition: opacity 0.2s;
+}
+
+.visibility-toggle.private .visibility-icon {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.track-notes-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  color: #e0e0e0;
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s;
+}
+
+.track-notes-textarea:focus {
+  outline: none;
+  border-color: rgba(102, 126, 234, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.track-notes-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.other-users-notes {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.other-users-notes-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.user-note-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.user-note-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.user-note-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.user-note-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a0a0a0;
+}
+
+.user-note-text {
+  font-size: 0.9rem;
+  color: #e0e0e0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}

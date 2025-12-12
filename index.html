@@ -400,6 +400,37 @@
               <span>Disliked</span>
             </button>
           </div>
+
+          <!-- Track Notes Section -->
+          <div class="track-notes-section">
+            <div class="track-notes-header">
+              <label for="trackNotesTextarea">Your Notes</label>
+              <button
+                class="visibility-toggle"
+                id="notesVisibilityToggle"
+                title="Toggle visibility"
+              >
+                <span class="visibility-icon">👁️‍🗨️</span>
+              </button>
+            </div>
+            <textarea
+              id="trackNotesTextarea"
+              class="track-notes-textarea"
+              placeholder="Add your personal notes about this track..."
+              rows="4"
+            ></textarea>
+            <button
+              class="modal-btn modal-btn-primary"
+              id="saveTrackNotes"
+              style="margin-top: 8px"
+            >
+              Save Notes
+            </button>
+          </div>
+
+          <!-- Other Users' Notes (visible only) -->
+          <div id="otherUsersNotes" class="other-users-notes"></div>
+
           <div class="modal-buttons">
             <button class="modal-btn modal-btn-cancel" id="cancelRateTrack">
               Cancel
