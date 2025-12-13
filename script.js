@@ -2526,12 +2526,7 @@ function updateAlbums(albums) {
         // Add click handler to open rating modal
         trackItem.addEventListener("click", () => {
           if (currentUser) {
-            showRateTrackModal(
-              album.id,
-              track,
-              album.trackRatings || {},
-              album.trackNotes || {}
-            );
+            showRateTrackModal(album.id, track, album.trackRatings || {});
           }
         });
 
@@ -2656,12 +2651,7 @@ let currentRatingContext = null;
 let trackPlayer = null;
 
 // Show rate track modal
-async function showRateTrackModal(
-  albumId,
-  track,
-  allTrackRatings,
-  allTrackNotes = {}
-) {
+async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   if (!currentUser) {
     await showCustomAlert("You must be signed in to rate tracks.");
     return;
@@ -2671,7 +2661,6 @@ async function showRateTrackModal(
     albumId,
     track,
     currentRatings: allTrackRatings,
-    currentNotes: allTrackNotes,
   };
 
   const modal = document.getElementById("rateTrackModal");
@@ -2683,11 +2672,20 @@ async function showRateTrackModal(
     .querySelectorAll(".rating-btn .rating-avatars")
     .forEach((el) => el.remove());
 
-  // Load user's notes if they exist
+  // Load user's notes for this specific track from ratings
   const trackKey = `${track.position}-${track.title}`;
-  const userNote = allTrackNotes[currentUser.email];
   const notesTextarea = document.getElementById("trackNotesTextarea");
   const visibilityToggle = document.getElementById("notesVisibilityToggle");
+
+  // Build a map of notes for this track from allTrackRatings
+  const trackNotesForThisTrack = {};
+  Object.entries(allTrackRatings).forEach(([userEmail, userRating]) => {
+    if (userRating && userRating.notes && userRating.notes[trackKey]) {
+      trackNotesForThisTrack[userEmail] = userRating.notes[trackKey];
+    }
+  });
+
+  const userNote = trackNotesForThisTrack[currentUser.email];
 
   if (userNote) {
     notesTextarea.value = userNote.text || "";
@@ -2701,8 +2699,8 @@ async function showRateTrackModal(
     visibilityToggle.classList.add("private"); // Default to private
   }
 
-  // Display other users' visible notes
-  displayOtherUsersNotes(allTrackNotes);
+  // Display other users' visible notes (pass per-track notes map)
+  displayOtherUsersNotes(trackNotesForThisTrack);
 
   // Convert full trackRatings to track-specific format for avatar display
   // trackKey already declared above
@@ -2864,39 +2862,83 @@ async function saveTrackNotes() {
   if (!db || !currentUser || !currentRatingContext) {
     return;
   }
-
-  const { albumId, track, currentNotes } = currentRatingContext;
+  const { albumId, track, currentRatings } = currentRatingContext;
   const trackKey = `${track.position}-${track.title}`;
   const textarea = document.getElementById("trackNotesTextarea");
   const visibilityToggle = document.getElementById("notesVisibilityToggle");
   const noteText = textarea.value.trim();
   const isVisible = !visibilityToggle.classList.contains("private");
 
-  const updatedNotes = { ...currentNotes };
+  // Work with a copy of the ratings object
+  const updatedAllRatings = { ...(currentRatings || {}) };
+
+  // Ensure current user's rating object exists
+  if (!updatedAllRatings[currentUser.email]) {
+    updatedAllRatings[currentUser.email] = {};
+  }
+
+  const userRatingObj = { ...(updatedAllRatings[currentUser.email] || {}) };
+  const userNotes = { ...(userRatingObj.notes || {}) };
 
   if (noteText) {
-    updatedNotes[currentUser.email] = {
+    userNotes[trackKey] = {
       text: noteText,
       visible: isVisible,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     };
+    console.log(
+      "Adding/updating note for user:",
+      currentUser.email,
+      "on track",
+      trackKey
+    );
   } else {
     // Remove note if text is empty
-    delete updatedNotes[currentUser.email];
+    delete userNotes[trackKey];
+    console.log(
+      "Removing note for user:",
+      currentUser.email,
+      "on track",
+      trackKey
+    );
   }
 
+  // Assign notes back to user's rating object
+  userRatingObj.notes = userNotes;
+  updatedAllRatings[currentUser.email] = userRatingObj;
+
   try {
-    await db.collection("albums").doc(albumId).update({
-      trackNotes: updatedNotes,
+    const docRef = db.collection("albums").doc(albumId);
+    console.log("Updating Firestore doc (trackRatings):", docRef.path);
+    await docRef.update({
+      trackRatings: updatedAllRatings,
     });
 
     await showCustomAlert("Notes saved successfully!", "Success");
 
-    // Update context with new notes
-    currentRatingContext.currentNotes = updatedNotes;
+    // Update context with new ratings
+    currentRatingContext.currentRatings = updatedAllRatings;
 
-    // Refresh the display of other users' notes
-    displayOtherUsersNotes(updatedNotes);
+    // Update the album in window.currentAlbums so the data stays fresh
+    if (window.currentAlbums) {
+      const albumIndex = window.currentAlbums.findIndex(
+        (a) => a.id === albumId
+      );
+      if (albumIndex !== -1) {
+        window.currentAlbums[albumIndex].trackRatings = updatedAllRatings;
+        console.log("✓ Updated album.trackRatings in window.currentAlbums");
+      }
+    }
+
+    // Build per-track notes map and refresh display
+    const trackNotesForThisTrack = {};
+    Object.entries(updatedAllRatings).forEach(([userEmail, userRating]) => {
+      if (userRating && userRating.notes && userRating.notes[trackKey]) {
+        trackNotesForThisTrack[userEmail] = userRating.notes[trackKey];
+      }
+    });
+
+    displayOtherUsersNotes(trackNotesForThisTrack);
   } catch (error) {
     console.error("Error saving track notes:", error);
     await showCustomAlert(`Failed to save notes: ${error.message}`, "Error");
