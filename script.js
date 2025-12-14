@@ -557,6 +557,57 @@ function showCustomConfirm(message, title = "Confirm") {
   });
 }
 
+// Small toast notification (non-blocking)
+function showToast(message, duration = 1800) {
+  try {
+    let container = document.getElementById("toastContainer");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "toastContainer";
+      container.style.position = "fixed";
+      container.style.right = "20px";
+      container.style.bottom = "20px";
+      container.style.zIndex = "99999";
+      container.style.display = "flex";
+      container.style.flexDirection = "column";
+      container.style.gap = "8px";
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+    toast.className = "app-toast";
+    toast.textContent = message;
+    toast.style.background = "rgba(30,30,40,0.95)";
+    toast.style.color = "#fff";
+    toast.style.padding = "10px 14px";
+    toast.style.borderRadius = "8px";
+    toast.style.boxShadow = "0 6px 18px rgba(0,0,0,0.4)";
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(8px)";
+    toast.style.transition = "opacity 160ms ease, transform 160ms ease";
+    container.appendChild(toast);
+
+    // animate in
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translateY(0)";
+    });
+
+    // remove after duration
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(8px)";
+      setTimeout(() => {
+        toast.remove();
+        // if container empty, remove it
+        if (container && container.children.length === 0) container.remove();
+      }, 180);
+    }, duration);
+  } catch (e) {
+    console.log("Toast error:", e);
+  }
+}
+
 // Setup real-time listener for voting state
 function setupVotingListener() {
   const monthKey = getMonthKey();
@@ -776,9 +827,7 @@ function setupEventListeners() {
   document
     .getElementById("notesVisibilityToggle")
     ?.addEventListener("click", toggleNotesVisibility);
-  document
-    .getElementById("saveTrackNotes")
-    ?.addEventListener("click", saveTrackNotes);
+  // Save button removed from UI; notes are auto-saved on modal close
 
   // Close modal on overlay click
   document.getElementById("rateTrackModal")?.addEventListener("click", (e) => {
@@ -2718,71 +2767,8 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     }
   });
 
-  // Add avatars to each rating button based on who voted
-  if (Object.keys(trackSpecificRatings).length > 0) {
-    const ratingTypes = {
-      favorite: "rateFavorite",
-      least: "rateLeast",
-      liked: "rateLiked",
-      disliked: "rateDisliked",
-    };
-
-    Object.entries(ratingTypes).forEach(([ratingType, buttonId]) => {
-      const button = document.getElementById(buttonId);
-      if (!button) return;
-
-      // Get users who gave this rating
-      const usersWithRating = Object.entries(trackSpecificRatings)
-        .filter(([email, rating]) => rating === ratingType)
-        .map(([email]) => email);
-
-      if (usersWithRating.length > 0) {
-        // Create avatars container
-        const avatarsContainer = document.createElement("div");
-        avatarsContainer.className = "rating-avatars";
-        avatarsContainer.style.display = "flex";
-        avatarsContainer.style.gap = "4px";
-        avatarsContainer.style.marginTop = "8px";
-        avatarsContainer.style.justifyContent = "center";
-        avatarsContainer.style.flexWrap = "wrap";
-
-        usersWithRating.forEach((email) => {
-          const participant = window.currentParticipants?.find(
-            (p) => p.email === email
-          );
-          if (participant) {
-            const avatar = document.createElement("img");
-            avatar.src = participant.picture;
-            avatar.alt = participant.name;
-            avatar.style.width = "20px";
-            avatar.style.height = "20px";
-            avatar.style.borderRadius = "50%";
-            avatar.style.border = "1px solid rgba(255, 255, 255, 0.3)";
-            avatar.title = participant.name;
-
-            // Fallback to emoji if image fails
-            avatar.onerror = () => {
-              const emoji = getAnimalEmojiForUser(email);
-              const emojiSpan = document.createElement("div");
-              emojiSpan.textContent = emoji;
-              emojiSpan.style.fontSize = "16px";
-              emojiSpan.style.width = "20px";
-              emojiSpan.style.height = "20px";
-              emojiSpan.style.display = "flex";
-              emojiSpan.style.alignItems = "center";
-              emojiSpan.style.justifyContent = "center";
-              emojiSpan.title = participant.name;
-              avatar.replaceWith(emojiSpan);
-            };
-
-            avatarsContainer.appendChild(avatar);
-          }
-        });
-
-        button.appendChild(avatarsContainer);
-      }
-    });
-  }
+  // Render avatars using helper so UI can be refreshed dynamically
+  renderRatingAvatars(track, allTrackRatings);
 
   modal.classList.remove("hidden");
 
@@ -2851,6 +2837,91 @@ function displayOtherUsersNotes(allTrackNotes) {
   });
 }
 
+// Render rating avatars for a given track and ratings map
+function renderRatingAvatars(track, allTrackRatings = {}) {
+  // Clear existing avatars
+  document
+    .querySelectorAll(".rating-btn .rating-avatars")
+    .forEach((el) => el.remove());
+
+  const trackKey = `${track.position}-${track.title}`;
+  const trackSpecificRatings = {};
+
+  Object.entries(allTrackRatings).forEach(([userEmail, userRating]) => {
+    if (userRating.favorite === trackKey) {
+      trackSpecificRatings[userEmail] = "favorite";
+    } else if (userRating.leastFavorite === trackKey) {
+      trackSpecificRatings[userEmail] = "least";
+    } else if (userRating.liked && userRating.liked.includes(trackKey)) {
+      trackSpecificRatings[userEmail] = "liked";
+    } else if (userRating.disliked && userRating.disliked.includes(trackKey)) {
+      trackSpecificRatings[userEmail] = "disliked";
+    }
+  });
+
+  if (Object.keys(trackSpecificRatings).length === 0) return;
+
+  const ratingTypes = {
+    favorite: "rateFavorite",
+    least: "rateLeast",
+    liked: "rateLiked",
+    disliked: "rateDisliked",
+  };
+
+  Object.entries(ratingTypes).forEach(([ratingType, buttonId]) => {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    const usersWithRating = Object.entries(trackSpecificRatings)
+      .filter(([email, rating]) => rating === ratingType)
+      .map(([email]) => email);
+
+    if (usersWithRating.length > 0) {
+      const avatarsContainer = document.createElement("div");
+      avatarsContainer.className = "rating-avatars";
+      avatarsContainer.style.display = "flex";
+      avatarsContainer.style.gap = "4px";
+      avatarsContainer.style.marginTop = "8px";
+      avatarsContainer.style.justifyContent = "center";
+      avatarsContainer.style.flexWrap = "wrap";
+
+      usersWithRating.forEach((email) => {
+        const participant = window.currentParticipants?.find(
+          (p) => p.email === email
+        );
+        if (participant) {
+          const avatar = document.createElement("img");
+          avatar.src = participant.picture;
+          avatar.alt = participant.name;
+          avatar.style.width = "20px";
+          avatar.style.height = "20px";
+          avatar.style.borderRadius = "50%";
+          avatar.style.border = "1px solid rgba(255, 255, 255, 0.3)";
+          avatar.title = participant.name;
+
+          avatar.onerror = () => {
+            const emoji = getAnimalEmojiForUser(email);
+            const emojiSpan = document.createElement("div");
+            emojiSpan.textContent = emoji;
+            emojiSpan.style.fontSize = "16px";
+            emojiSpan.style.width = "20px";
+            emojiSpan.style.height = "20px";
+            emojiSpan.style.display = "flex";
+            emojiSpan.style.alignItems = "center";
+            emojiSpan.style.justifyContent = "center";
+            emojiSpan.title = participant.name;
+            avatar.replaceWith(emojiSpan);
+          };
+
+          avatarsContainer.appendChild(avatar);
+        }
+      });
+
+      button.appendChild(avatarsContainer);
+    }
+  });
+}
+
 // Toggle notes visibility
 function toggleNotesVisibility() {
   const toggle = document.getElementById("notesVisibilityToggle");
@@ -2858,7 +2929,8 @@ function toggleNotesVisibility() {
 }
 
 // Save track notes
-async function saveTrackNotes() {
+async function saveTrackNotes(options = {}) {
+  const { silent = false } = options || {};
   if (!db || !currentUser || !currentRatingContext) {
     return;
   }
@@ -2914,10 +2986,24 @@ async function saveTrackNotes() {
       trackRatings: updatedAllRatings,
     });
 
-    await showCustomAlert("Notes saved successfully!", "Success");
+    if (!silent) {
+      await showCustomAlert("Notes saved successfully!", "Success");
+    } else {
+      // gentle visual confirmation for auto-save
+      showToast("Notes auto-saved");
+      console.log("Notes saved silently");
+    }
 
     // Update context with new ratings
     currentRatingContext.currentRatings = updatedAllRatings;
+
+    // Update original note state so unsaved-change detection doesn't trigger
+    try {
+      currentRatingContext.originalNoteText = noteText || "";
+      currentRatingContext.originalNoteVisible = isVisible;
+    } catch (e) {
+      // ignore
+    }
 
     // Update the album in window.currentAlbums so the data stays fresh
     if (window.currentAlbums) {
@@ -2991,8 +3077,20 @@ function loadTrackPlayer(videoId) {
 }
 
 // Close rate track modal
-function closeRateTrackModal() {
+async function closeRateTrackModal() {
   const modal = document.getElementById("rateTrackModal");
+
+  // Attempt to auto-save notes silently if there are changes
+  try {
+    if (currentRatingContext) {
+      // call saveTrackNotes silently; it will update context/original state
+      await saveTrackNotes({ silent: true });
+    }
+  } catch (e) {
+    console.warn("Auto-save before close failed:", e);
+    // proceed to close anyway
+  }
+
   modal.classList.add("hidden");
 
   // Destroy player if it exists
@@ -3008,6 +3106,15 @@ function closeRateTrackModal() {
   }
 
   currentRatingContext = null;
+  // Refresh overview when modal is closed
+  try {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+  } catch (e) {
+    console.warn("Failed to refresh albums after closing modal:", e);
+  }
 }
 
 // Apply track rating
@@ -3083,8 +3190,32 @@ async function applyTrackRating(ratingType) {
       trackRatings: updatedRatings,
     });
 
-    // Close modal and reload albums
-    closeRateTrackModal();
+    // Update in-memory context so modal can reflect changes immediately
+    try {
+      if (currentRatingContext) {
+        currentRatingContext.currentRatings = updatedRatings;
+
+        // Refresh avatars in the open modal
+        renderRatingAvatars(track, updatedRatings);
+
+        // Update album in window.currentAlbums so overview stays fresh
+        if (window.currentAlbums) {
+          const albumIndex = window.currentAlbums.findIndex(
+            (a) => a.id === albumId
+          );
+          if (albumIndex !== -1) {
+            window.currentAlbums[albumIndex].trackRatings = updatedRatings;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn(
+        "Error updating in-memory ratings after applyTrackRating:",
+        e
+      );
+    }
+
+    // Reload albums after rating (modal stays open)
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
