@@ -2540,14 +2540,31 @@ function updateAlbums(albums) {
         trackText.textContent = `${track.position}. ${track.title}`;
         trackItem.appendChild(trackText);
 
-        // Add ratings container for all users who rated this track
+        // Add ratings container for all users who rated this track (also hosts note indicator)
         const trackRatings = album.trackRatings || {};
         const trackKey = `${track.position}-${track.title}`;
         const ratingsContainer = document.createElement("div");
         ratingsContainer.className = "track-ratings-container";
 
-        // Check all users' ratings for this track
+        let hasNotes = false;
+
+        // Check all users' ratings and notes for this track
         Object.entries(trackRatings).forEach(([userEmail, userRating]) => {
+          // Detect notes for this user on this track
+          try {
+            if (
+              userRating.notes &&
+              userRating.notes[trackKey] &&
+              userRating.notes[trackKey].visible === true &&
+              userRating.notes[trackKey].text &&
+              userRating.notes[trackKey].text.trim() !== ""
+            ) {
+              hasNotes = true;
+            }
+          } catch (e) {
+            // ignore malformed entries
+          }
+
           let ratingType = null;
 
           if (userRating.favorite === trackKey) {
@@ -2569,10 +2586,75 @@ function updateAlbums(albums) {
               (p) => p.email === userEmail
             );
             if (participant) {
-              addRatingIndicator(ratingsContainer, ratingType, participant);
+              // Determine if this particular user has a visible note for this track
+              let userHasNote = false;
+              try {
+                userHasNote = !!(
+                  userRating.notes &&
+                  userRating.notes[trackKey] &&
+                  userRating.notes[trackKey].visible === true &&
+                  userRating.notes[trackKey].text &&
+                  userRating.notes[trackKey].text.trim() !== ""
+                );
+              } catch (e) {
+                userHasNote = false;
+              }
+              addRatingIndicator(
+                ratingsContainer,
+                ratingType,
+                participant,
+                userHasNote
+              );
             }
           }
         });
+
+        // (note indicator removed — overlay on avatars handles per-user notes)
+
+        // If current user has a visible note for this track but hasn't rated it,
+        // show their avatar with the note overlay so they see their note marker.
+        try {
+          if (currentUser && currentUser.email) {
+            const myRating = trackRatings[currentUser.email];
+            let iRated = false;
+            if (myRating) {
+              const myKey = trackKey;
+              if (
+                myRating.favorite === myKey ||
+                myRating.leastFavorite === myKey ||
+                (myRating.liked && myRating.liked.includes(myKey)) ||
+                (myRating.disliked && myRating.disliked.includes(myKey))
+              ) {
+                iRated = true;
+              }
+            }
+
+            // Check if current user's note is visible to others
+            let myHasVisibleNote = false;
+            if (
+              myRating &&
+              myRating.notes &&
+              myRating.notes[trackKey] &&
+              myRating.notes[trackKey].visible === true &&
+              myRating.notes[trackKey].text &&
+              myRating.notes[trackKey].text.trim() !== ""
+            ) {
+              myHasVisibleNote = true;
+            }
+
+            if (myHasVisibleNote && !iRated) {
+              // find participant info for current user
+              const me = window.currentParticipants?.find(
+                (p) => p.email === currentUser.email
+              );
+              if (me) {
+                addRatingIndicator(ratingsContainer, null, me, true);
+              }
+            }
+          }
+        } catch (e) {
+          /* ignore */
+        }
 
         if (ratingsContainer.children.length > 0) {
           trackItem.appendChild(ratingsContainer);
@@ -2642,7 +2724,7 @@ function getParticipantColors() {
 }
 
 // Add rating indicator to track item
-function addRatingIndicator(container, type, participant) {
+function addRatingIndicator(container, type, participant, hasNote = false) {
   const ratingDiv = document.createElement("div");
   ratingDiv.className = "track-rating";
 
@@ -2679,25 +2761,36 @@ function addRatingIndicator(container, type, participant) {
     ratingDiv.appendChild(avatar);
   }
 
-  // Add emoji based on rating type
-  const emoji = document.createElement("span");
-  emoji.className = "track-rating-emoji";
-
-  if (type === "favorite") {
-    emoji.textContent = "⭐";
-    emoji.style.color = "#fbbf24";
-  } else if (type === "least") {
-    emoji.textContent = "💔";
-    emoji.style.color = "#ef4444";
-  } else if (type === "liked") {
-    emoji.textContent = "👍";
-    emoji.style.color = "#22c55e";
-  } else if (type === "disliked") {
-    emoji.textContent = "👎";
-    emoji.style.color = "#ef4444";
+  // If the user has a note for this track, add a small overlay on their avatar
+  if (hasNote) {
+    const noteOverlay = document.createElement("span");
+    noteOverlay.className = "note-overlay";
+    noteOverlay.textContent = "📝";
+    noteOverlay.title = "User has notes";
+    ratingDiv.appendChild(noteOverlay);
   }
 
-  ratingDiv.appendChild(emoji);
+  // Add emoji based on rating type (only if a type is provided)
+  if (type) {
+    const emoji = document.createElement("span");
+    emoji.className = "track-rating-emoji";
+
+    if (type === "favorite") {
+      emoji.textContent = "⭐";
+      emoji.style.color = "#fbbf24";
+    } else if (type === "least") {
+      emoji.textContent = "💔";
+      emoji.style.color = "#ef4444";
+    } else if (type === "liked") {
+      emoji.textContent = "👍";
+      emoji.style.color = "#22c55e";
+    } else if (type === "disliked") {
+      emoji.textContent = "👎";
+      emoji.style.color = "#ef4444";
+    }
+
+    ratingDiv.appendChild(emoji);
+  }
   container.appendChild(ratingDiv);
 }
 
