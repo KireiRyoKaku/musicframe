@@ -17,7 +17,10 @@ const features = [
   "Add albums",
   "Join discussions",
   "Insert YouTube links",
-  "Rate tracks",
+  /* Mark Rate tracks as new with a small superscript flag */
+  'Rate tracks <sup class="feature-new">NEW</sup>',
+  'Take Notes <sup class="feature-new">NEW</sup>',
+  'Make notes visible to others <sup class="feature-new">NEW</sup>',
   "Dive deep into music",
   "Vote on albums",
   "Lock your album",
@@ -43,7 +46,7 @@ function rotateFeatureTooltip() {
   if (loginTooltip) {
     loginTooltip.style.animation = "none";
     setTimeout(() => {
-      loginTooltip.textContent = newFeature;
+      loginTooltip.innerHTML = newFeature;
       loginTooltip.style.animation = "fadeInOut 0.5s ease-in-out";
     }, 10);
   }
@@ -51,7 +54,7 @@ function rotateFeatureTooltip() {
   if (mainTooltip) {
     mainTooltip.style.animation = "none";
     setTimeout(() => {
-      mainTooltip.textContent = newFeature;
+      mainTooltip.innerHTML = newFeature;
       mainTooltip.style.animation = "fadeInOut 0.5s ease-in-out";
     }, 10);
   }

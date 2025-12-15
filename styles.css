@@ -1628,6 +1628,22 @@ body {
   color: transparent;
 }
 
+/* Small NEW flag used next to features in the rotating tooltip */
+.feature-new {
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-left: 4px;
+  vertical-align: super;
+  display: inline-block;
+  line-height: 1;
+  background: linear-gradient(135deg, #6ee7b7 0%, #10b981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  text-decoration: none;
+}
+
 /* Disabled state for rating buttons */
 .rating-btn.disabled {
   opacity: 0.5;
