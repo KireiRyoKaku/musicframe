@@ -577,8 +577,7 @@ function showToast(message, duration = 1800) {
     const toast = document.createElement("div");
     toast.className = "app-toast";
     toast.textContent = message;
-    toast.style.background = "rgba(30,30,40,0.95)";
-    toast.style.color = "#fff";
+    // background and color moved to CSS (.app-toast) so theme can be styled centrally
     toast.style.padding = "10px 14px";
     toast.style.borderRadius = "8px";
     toast.style.boxShadow = "0 6px 18px rgba(0,0,0,0.4)";

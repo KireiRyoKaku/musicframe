@@ -1725,3 +1725,18 @@ body {
   white-space: pre-wrap;
   word-wrap: break-word;
 }
+
+/* Toast notifications */
+.app-toast {
+  background: rgba(30, 30, 40, 0.95);
+  color: #10b981; /* match the visible-to-others green hue */
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  font-weight: 600;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.app-toast + .app-toast {
+  margin-top: 8px;
+}
