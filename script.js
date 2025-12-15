@@ -576,7 +576,11 @@ function showToast(message, duration = 1800) {
 
     const toast = document.createElement("div");
     toast.className = "app-toast";
-    toast.textContent = message;
+    // wrap message in a span so we can apply clipped-gradient text via CSS
+    const span = document.createElement("span");
+    span.className = "toast-text";
+    span.textContent = message;
+    toast.appendChild(span);
     // background and color moved to CSS (.app-toast) so theme can be styled centrally
     toast.style.padding = "10px 14px";
     toast.style.borderRadius = "8px";

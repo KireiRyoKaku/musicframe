@@ -1728,15 +1728,25 @@ body {
 
 /* Toast notifications */
 .app-toast {
-  background: rgba(30, 30, 40, 0.95);
-  color: #10b981; /* match the visible-to-others green hue */
+  /* darker green gradient background for higher contrast */
+  background: linear-gradient(135deg, #2fae83 0%, #0f8f5f 100%);
+  color: #ffffff; /* solid white text for best legibility */
   padding: 10px 14px;
   border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-  font-weight: 600;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  font-weight: 700;
   transition: opacity 160ms ease, transform 160ms ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 .app-toast + .app-toast {
   margin-top: 8px;
+}
+
+/* Clipped gradient text for toast message */
+.app-toast .toast-text {
+  display: inline-block;
+  color: inherit;
+  font-weight: 700;
+  text-shadow: inherit;
 }
