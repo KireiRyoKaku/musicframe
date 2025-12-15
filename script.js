@@ -2748,6 +2748,20 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     visibilityToggle.classList.add("private"); // Default to private
   }
 
+  // Update visibility label text
+  try {
+    const visibilityLabel = document.getElementById("notesVisibilityLabel");
+    if (visibilityLabel) {
+      visibilityLabel.textContent = visibilityToggle.classList.contains(
+        "private"
+      )
+        ? "Visible only to you"
+        : "Visible to others";
+    }
+  } catch (e) {
+    // ignore
+  }
+
   // Display other users' visible notes (pass per-track notes map)
   displayOtherUsersNotes(trackNotesForThisTrack);
 
@@ -2924,8 +2938,30 @@ function renderRatingAvatars(track, allTrackRatings = {}) {
 
 // Toggle notes visibility
 function toggleNotesVisibility() {
-  const toggle = document.getElementById("notesVisibilityToggle");
-  toggle.classList.toggle("private");
+  try {
+    const toggle = document.getElementById("notesVisibilityToggle");
+    const label = document.getElementById("notesVisibilityLabel");
+
+    console.log("toggleNotesVisibility called");
+
+    if (!toggle) return;
+
+    toggle.classList.toggle("private");
+
+    // update aria-pressed for accessibility
+    const pressed = !toggle.classList.contains("private");
+    try {
+      toggle.setAttribute("aria-pressed", pressed ? "true" : "false");
+    } catch (e) {}
+
+    if (label) {
+      label.textContent = toggle.classList.contains("private")
+        ? "Visible only to you"
+        : "Visible to others";
+    }
+  } catch (e) {
+    console.error("Error in toggleNotesVisibility:", e);
+  }
 }
 
 // Save track notes

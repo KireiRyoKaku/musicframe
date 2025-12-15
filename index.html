@@ -405,13 +405,20 @@
           <div class="track-notes-section">
             <div class="track-notes-header">
               <label for="trackNotesTextarea">Your Notes</label>
-              <button
-                class="visibility-toggle"
-                id="notesVisibilityToggle"
-                title="Toggle visibility"
-              >
-                <span class="visibility-icon">👁️‍🗨️</span>
-              </button>
+              <div class="visibility-controls">
+                <span id="notesVisibilityLabel" class="visibility-label"
+                  >Visible only to you</span
+                >
+                <button
+                  type="button"
+                  class="visibility-toggle"
+                  id="notesVisibilityToggle"
+                  title="Toggle visibility"
+                  aria-pressed="false"
+                >
+                  <span class="visibility-icon">👁️‍🗨️</span>
+                </button>
+              </div>
             </div>
             <textarea
               id="trackNotesTextarea"

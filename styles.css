@@ -1584,6 +1584,22 @@ body {
   border-color: rgba(255, 255, 255, 0.2);
 }
 
+.visibility-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.visibility-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .visibility-icon {
   font-size: 1.2rem;
   transition: opacity 0.2s;
