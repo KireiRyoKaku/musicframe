@@ -941,7 +941,26 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
   margin: 0;
+}
+
+/* Reddish gradient for join-prompt modal title */
+.join-title {
+  font-weight: 700;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Higher-specificity rule to override .modal-header h2 gradient */
+.modal-header h2.join-title {
+  background: linear-gradient(135deg, #ff7a7a 0%, #ef4444 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  display: inline-block;
 }
 
 .modal-close {
@@ -1598,6 +1617,30 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+/* When notes are visible to others, make the label greenish */
+.visibility-label.visible-others {
+  background: linear-gradient(135deg, #6ee7b7 0%, #10b981 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Disabled state for rating buttons */
+.rating-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Disabled style for visibility toggle */
+.visibility-toggle[disabled],
+.visibility-toggle[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .visibility-icon {

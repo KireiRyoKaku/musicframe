@@ -2706,6 +2706,11 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     return;
   }
 
+  // Check if user joined the discussion for this month
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+
   currentRatingContext = {
     albumId,
     track,
@@ -2716,6 +2721,23 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   const trackNameEl = document.getElementById("rateTrackName");
   trackNameEl.textContent = `${track.position}. ${track.title}`;
 
+  // Update modal title depending on participation
+  try {
+    const modalTitle = document.getElementById("rateTrackModalTitle");
+    if (modalTitle) {
+      modalTitle.textContent = isParticipant
+        ? "Rate Track"
+        : "Join discussion to rate and take notes";
+      if (!isParticipant) {
+        modalTitle.classList.add("join-title");
+      } else {
+        modalTitle.classList.remove("join-title");
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
   // Clear existing avatars from buttons
   document
     .querySelectorAll(".rating-btn .rating-avatars")
@@ -2725,6 +2747,50 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   const trackKey = `${track.position}-${track.title}`;
   const notesTextarea = document.getElementById("trackNotesTextarea");
   const visibilityToggle = document.getElementById("notesVisibilityToggle");
+
+  // Disable rating and notes if user is not a participant
+  const ratingButtonIds = [
+    "rateFavorite",
+    "rateLeast",
+    "rateLiked",
+    "rateDisliked",
+  ];
+  if (!isParticipant) {
+    // Disable buttons
+    ratingButtonIds.forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) {
+        b.disabled = true;
+        b.classList.add("disabled");
+        b.title = "Join the discussion to rate tracks";
+      }
+    });
+
+    // Disable notes textarea and visibility toggle
+    if (notesTextarea) {
+      notesTextarea.disabled = true;
+      notesTextarea.placeholder = "Join the discussion to add notes";
+    }
+    if (visibilityToggle) {
+      visibilityToggle.disabled = true;
+      visibilityToggle.setAttribute("aria-disabled", "true");
+    }
+  } else {
+    // Ensure enabled
+    ratingButtonIds.forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) {
+        b.disabled = false;
+        b.classList.remove("disabled");
+        b.title = "";
+      }
+    });
+    if (notesTextarea) notesTextarea.disabled = false;
+    if (visibilityToggle) {
+      visibilityToggle.disabled = false;
+      visibilityToggle.removeAttribute("aria-disabled");
+    }
+  }
 
   // Build a map of notes for this track from allTrackRatings
   const trackNotesForThisTrack = {};
@@ -2752,11 +2818,16 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   try {
     const visibilityLabel = document.getElementById("notesVisibilityLabel");
     if (visibilityLabel) {
-      visibilityLabel.textContent = visibilityToggle.classList.contains(
-        "private"
-      )
+      const isPrivate = visibilityToggle.classList.contains("private");
+      visibilityLabel.textContent = isPrivate
         ? "Visible only to you"
         : "Visible to others";
+      // Update class for color state
+      if (isPrivate) {
+        visibilityLabel.classList.remove("visible-others");
+      } else {
+        visibilityLabel.classList.add("visible-others");
+      }
     }
   } catch (e) {
     // ignore
@@ -2807,7 +2878,7 @@ function displayOtherUsersNotes(allTrackNotes) {
 
   const title = document.createElement("div");
   title.className = "other-users-notes-title";
-  title.textContent = "Community Notes";
+  title.textContent = "Participants Notes";
   container.appendChild(title);
 
   visibleNotes.forEach(([email, note]) => {
@@ -2946,6 +3017,13 @@ function toggleNotesVisibility() {
 
     if (!toggle) return;
 
+    if (toggle.disabled) {
+      console.log(
+        "toggleNotesVisibility: toggle is disabled for non-participants"
+      );
+      return;
+    }
+
     toggle.classList.toggle("private");
 
     // update aria-pressed for accessibility
@@ -2955,9 +3033,15 @@ function toggleNotesVisibility() {
     } catch (e) {}
 
     if (label) {
-      label.textContent = toggle.classList.contains("private")
+      const isPrivate = toggle.classList.contains("private");
+      label.textContent = isPrivate
         ? "Visible only to you"
         : "Visible to others";
+      if (isPrivate) {
+        label.classList.remove("visible-others");
+      } else {
+        label.classList.add("visible-others");
+      }
     }
   } catch (e) {
     console.error("Error in toggleNotesVisibility:", e);
@@ -2968,6 +3052,20 @@ function toggleNotesVisibility() {
 async function saveTrackNotes(options = {}) {
   const { silent = false } = options || {};
   if (!db || !currentUser || !currentRatingContext) {
+    return;
+  }
+
+  // Prevent non-participants from saving notes
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    if (!silent) {
+      await showCustomAlert(
+        "Join the discussion to add notes.",
+        "Join to Participate"
+      );
+    }
     return;
   }
   const { albumId, track, currentRatings } = currentRatingContext;
@@ -3156,6 +3254,18 @@ async function closeRateTrackModal() {
 // Apply track rating
 async function applyTrackRating(ratingType) {
   if (!db || !currentUser || !currentRatingContext) {
+    return;
+  }
+
+  // Prevent non-participants from applying ratings
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    await showCustomAlert(
+      "Join the discussion to rate tracks.",
+      "Join to Participate"
+    );
     return;
   }
 
