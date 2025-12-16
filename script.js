@@ -2044,9 +2044,19 @@ function updateParticipants(participants) {
       div.appendChild(removeBtn);
     }
 
-    // Add click event to highlight participant's album
+    // Add click event: on mobile scroll to that participant's album, on desktop toggle highlight
     div.addEventListener("click", () => {
-      toggleHighlightAlbum(participant.email);
+      try {
+        const isMobile = window.matchMedia("(max-width: 640px)").matches;
+        if (isMobile) {
+          scrollToAlbumByEmail(participant.email);
+        } else {
+          toggleHighlightAlbum(participant.email);
+        }
+      } catch (e) {
+        // fallback to highlight
+        toggleHighlightAlbum(participant.email);
+      }
     });
 
     participantsList.appendChild(div);
@@ -4049,6 +4059,26 @@ function toggleHighlightAlbum(email) {
   }
 }
 
+// Scroll the page to the album added by the specified email (mobile UX)
+function scrollToAlbumByEmail(email) {
+  if (!email) return;
+  const albumCard = document.querySelector(
+    `.album-card[data-added-by="${email}"]`
+  );
+  if (!albumCard) return;
+
+  // Scroll into view and add a temporary highlight class for feedback
+  albumCard.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+    inline: "nearest",
+  });
+  albumCard.classList.add("album-temp-focus");
+  setTimeout(() => {
+    albumCard.classList.remove("album-temp-focus");
+  }, 1800);
+}
+
 // Show voting warning modal
 async function showVotingModal() {
   if (!currentUser) {
@@ -4112,6 +4142,38 @@ async function showVotingModal() {
   const warningModal = document.getElementById("votingWarningModal");
   warningModal.classList.remove("hidden");
 }
+
+// Mobile scroll-to-top behavior: show when scrolled down and handle click
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const scrollBtn = document.getElementById("mobileScrollTopBtn");
+    if (!scrollBtn) return;
+
+    const updateVisibility = () => {
+      const isMobile = window.matchMedia("(max-width: 640px)").matches;
+      if (!isMobile) {
+        scrollBtn.classList.add("hidden");
+        return;
+      }
+      if (window.scrollY > 200) scrollBtn.classList.remove("hidden");
+      else scrollBtn.classList.add("hidden");
+    };
+
+    window.addEventListener("scroll", updateVisibility, { passive: true });
+    window.addEventListener("resize", updateVisibility);
+
+    scrollBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      scrollBtn.classList.add("hidden");
+    });
+
+    // initial check
+    updateVisibility();
+  } catch (e) {
+    console.warn("mobile scroll-top init failed", e);
+  }
+});
 
 // Close voting warning modal
 function closeVotingWarningModal() {

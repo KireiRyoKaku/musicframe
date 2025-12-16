@@ -639,6 +639,48 @@ body {
   transform: translateY(-8px);
 }
 
+/* Temporary focus style when scrolling to album on mobile */
+.album-temp-focus {
+  box-shadow: 0 0 0 6px rgba(102, 126, 234, 0.12),
+    0 8px 30px rgba(0, 0, 0, 0.55) !important;
+  transform: translateY(-4px) scale(1.01);
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+/* Mobile scroll-to-top button */
+.mobile-scroll-top {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  z-index: 1200;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+
+.mobile-scroll-top:active {
+  transform: translateX(-50%) scale(0.98);
+}
+
+@media (max-width: 640px) {
+  .mobile-scroll-top {
+    display: flex;
+  }
+  .mobile-scroll-top.hidden {
+    display: none !important;
+  }
+}
+
 .delete-album-btn {
   background: rgba(239, 68, 68, 0.9);
   border: none;
