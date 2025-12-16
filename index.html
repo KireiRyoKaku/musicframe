@@ -414,8 +414,8 @@
               <label for="trackNotesTextarea">Your Notes</label>
               <div class="visibility-controls">
                 <span id="notesVisibilityLabel" class="visibility-label"
-                  >Visible only to you</span
-                >
+                  >These notes are visible only to you
+                </span>
                 <button
                   type="button"
                   class="visibility-toggle"
@@ -443,6 +443,66 @@
               type="button"
               class="modal-btn modal-btn-cancel"
               id="cancelRateTrack"
+            >
+              Close and Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Album Note Modal -->
+    <div id="albumNoteModal" class="modal-overlay hidden">
+      <div class="modal-container modal-container-large">
+        <div class="modal-header">
+          <h2 id="albumNoteModalTitle">Album Notes</h2>
+          <button
+            type="button"
+            class="modal-close"
+            id="closeAlbumNoteModal"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description" id="albumNoteAlbumInfo">
+            Add notes about this album
+          </p>
+
+          <div class="track-notes-section">
+            <div class="track-notes-header">
+              <label for="albumNoteTextarea">Your Notes</label>
+              <div class="visibility-controls">
+                <span id="albumNotesVisibilityLabel" class="visibility-label"
+                  >These notes are visible only to you
+                </span>
+                <button
+                  type="button"
+                  class="visibility-toggle private"
+                  id="albumNotesVisibilityToggle"
+                  title="Toggle visibility"
+                  aria-pressed="false"
+                >
+                  <span class="visibility-icon">👁️‍🗨️</span>
+                </button>
+              </div>
+            </div>
+            <textarea
+              id="albumNoteTextarea"
+              class="track-notes-textarea"
+              placeholder="Add your notes about the whole album..."
+              rows="6"
+            ></textarea>
+          </div>
+
+          <div id="albumOtherUsersNotes" class="other-users-notes"></div>
+
+          <div class="modal-buttons">
+            <button
+              type="button"
+              class="modal-btn modal-btn-cancel"
+              id="cancelAlbumNote"
             >
               Close and Save
             </button>

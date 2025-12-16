@@ -19,7 +19,8 @@ const features = [
   "Insert YouTube links",
   /* Mark Rate tracks as new with a small superscript flag */
   'Rate tracks <sup class="feature-new">NEW</sup>',
-  'Take Notes <sup class="feature-new">NEW</sup>',
+  'Take notes for individual track <sup class="feature-new">NEW</sup>',
+  'Take notes for the whole album <sup class="feature-new">NEW</sup>',
   'Make notes visible to others <sup class="feature-new">NEW</sup>',
   "Dive deep into music",
   "Vote on albums",
@@ -839,6 +840,24 @@ function setupEventListeners() {
   document.getElementById("rateTrackModal")?.addEventListener("click", (e) => {
     if (e.target.id === "rateTrackModal") {
       closeRateTrackModal();
+    }
+  });
+
+  // Album Note Modal event listeners
+  document
+    .getElementById("closeAlbumNoteModal")
+    ?.addEventListener("click", closeAlbumNoteModal);
+  document
+    .getElementById("cancelAlbumNote")
+    ?.addEventListener("click", closeAlbumNoteModal);
+  document
+    .getElementById("albumNotesVisibilityToggle")
+    ?.addEventListener("click", toggleAlbumNotesVisibility);
+
+  // Close modal on overlay click
+  document.getElementById("albumNoteModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "albumNoteModal") {
+      closeAlbumNoteModal();
     }
   });
 
@@ -2258,6 +2277,43 @@ function updateAlbums(albums) {
       card.appendChild(editBtn);
     }
 
+    // Action buttons container (shown on hover on desktop)
+    const actionContainer = document.createElement("div");
+    actionContainer.className = "album-action-buttons";
+
+    // Album-level notes action
+    const albumNoteBtn = document.createElement("button");
+    albumNoteBtn.className = "action-btn album-note-action";
+    albumNoteBtn.innerHTML = "📝";
+    albumNoteBtn.title = "Album Notes";
+    albumNoteBtn.setAttribute("aria-label", "Album Notes");
+    albumNoteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showAlbumNoteModal(album.id);
+    });
+
+    // YouTube / play action
+    const youtubeBtn = document.createElement("button");
+    youtubeBtn.className = "action-btn album-youtube-action";
+    youtubeBtn.innerHTML = "▶";
+    youtubeBtn.title = "Open on YouTube Music";
+    youtubeBtn.setAttribute("aria-label", "Open on YouTube Music");
+    youtubeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (album.youtubeUrl) {
+        window.open(album.youtubeUrl, "_blank");
+      } else if (album.playlistId) {
+        window.open(
+          "https://music.youtube.com/playlist?list=" + album.playlistId,
+          "_blank"
+        );
+      }
+    });
+
+    actionContainer.appendChild(albumNoteBtn);
+    actionContainer.appendChild(youtubeBtn);
+    card.appendChild(actionContainer);
+
     // Check if voting is active for this month
     const votingActive = window.currentVotingActive || false;
 
@@ -2521,6 +2577,51 @@ function updateAlbums(albums) {
       });
     }
 
+    // Show album-level public-note indicator if any participant has a visible album note
+    try {
+      const notes = album.albumNotes || {};
+      const visibleNotes = Object.values(notes).filter(
+        (n) => n && n.visible && n.text && n.text.trim() !== ""
+      );
+      const publicCount = visibleNotes.length;
+      if (publicCount > 0) {
+        const noteIndicator = document.createElement("div");
+        noteIndicator.className = "album-note-indicator";
+        const titleText = `${publicCount} public note${
+          publicCount > 1 ? "s" : ""
+        }`;
+        noteIndicator.title = titleText;
+        noteIndicator.setAttribute("aria-label", titleText);
+
+        // Build icon + superscript count
+        noteIndicator.innerHTML = `
+          <span class="note-icon">📝</span>
+          <span class="note-count">${publicCount}</span>
+        `;
+
+        // Show preview on hover
+        noteIndicator.addEventListener("mouseenter", (e) => {
+          try {
+            showAlbumNotePreview(album, noteIndicator);
+          } catch (err) {
+            console.warn("Preview show error:", err);
+          }
+        });
+
+        noteIndicator.addEventListener("mouseleave", (e) => {
+          try {
+            hideAlbumNotePreview();
+          } catch (err) {
+            console.warn("Preview hide error:", err);
+          }
+        });
+
+        card.appendChild(noteIndicator);
+      }
+    } catch (e) {
+      // ignore
+    }
+
     card.appendChild(cover);
     card.appendChild(info);
     albumWrapper.appendChild(card);
@@ -2629,7 +2730,7 @@ function updateAlbums(albums) {
               }
             }
 
-            // Check if current user's note is visible to others
+            // Check if current user's note is These notes are visible only to you
             let myHasVisibleNote = false;
             if (
               myRating &&
@@ -2919,8 +3020,8 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     if (visibilityLabel) {
       const isPrivate = visibilityToggle.classList.contains("private");
       visibilityLabel.textContent = isPrivate
-        ? "Visible only to you"
-        : "Visible to others";
+        ? "This note is visible only to you "
+        : "These notes are visible only to you ";
       // Update class for color state
       if (isPrivate) {
         visibilityLabel.classList.remove("visible-others");
@@ -3134,8 +3235,8 @@ function toggleNotesVisibility() {
     if (label) {
       const isPrivate = toggle.classList.contains("private");
       label.textContent = isPrivate
-        ? "Visible only to you"
-        : "Visible to others";
+        ? "This note is visible only to you "
+        : "These notes are visible only to you ";
       if (isPrivate) {
         label.classList.remove("visible-others");
       } else {
@@ -3347,6 +3448,362 @@ async function closeRateTrackModal() {
     loadAlbums(monthKey);
   } catch (e) {
     console.warn("Failed to refresh albums after closing modal:", e);
+  }
+}
+
+// Show album note modal for whole-album notes
+async function showAlbumNoteModal(albumId) {
+  if (!currentUser) {
+    await showCustomAlert("You must be signed in to add album notes.");
+    return;
+  }
+
+  if (!db) return;
+
+  window.currentAlbumNoteId = albumId;
+
+  try {
+    const doc = await db.collection("albums").doc(albumId).get();
+    if (!doc.exists) {
+      await showCustomAlert("Album not found.");
+      return;
+    }
+
+    const album = doc.data();
+
+    // Populate modal info
+    const titleEl = document.getElementById("albumNoteModalTitle");
+    const infoEl = document.getElementById("albumNoteAlbumInfo");
+    if (titleEl) titleEl.textContent = `${album.title} — ${album.artist}`;
+    if (infoEl)
+      infoEl.textContent = album.description || "Add notes about this album";
+
+    const notesMap = album.albumNotes || {};
+    const myNote = notesMap[currentUser.email];
+
+    const textarea = document.getElementById("albumNoteTextarea");
+    const visibilityToggle = document.getElementById(
+      "albumNotesVisibilityToggle"
+    );
+
+    if (textarea) textarea.value = (myNote && myNote.text) || "";
+
+    if (visibilityToggle) {
+      if (myNote && myNote.visible) {
+        visibilityToggle.classList.remove("private");
+      } else {
+        visibilityToggle.classList.add("private");
+      }
+      const label = document.getElementById("albumNotesVisibilityLabel");
+      if (label) {
+        const isPrivate = visibilityToggle.classList.contains("private");
+        label.textContent = isPrivate
+          ? "These notes are visible only to you "
+          : "These notes are visible to others";
+        // Update green state when This note is visible to others
+        if (isPrivate) {
+          label.classList.remove("visible-others");
+          visibilityToggle.setAttribute("aria-pressed", "false");
+        } else {
+          label.classList.add("visible-others");
+          visibilityToggle.setAttribute("aria-pressed", "true");
+        }
+      }
+    }
+
+    // Display other users' visible album notes
+    displayOtherUsersAlbumNotes(notesMap);
+
+    // Disable input for non-participants similarly to track modal
+    const isParticipant =
+      window.currentParticipants &&
+      window.currentParticipants.some((p) => p.email === currentUser.email);
+
+    if (!isParticipant) {
+      if (textarea) {
+        textarea.disabled = true;
+        textarea.placeholder = "Join the discussion to add album notes";
+      }
+      if (visibilityToggle) {
+        visibilityToggle.disabled = true;
+        visibilityToggle.setAttribute("aria-disabled", "true");
+      }
+    } else {
+      if (textarea) textarea.disabled = false;
+      if (visibilityToggle) {
+        visibilityToggle.disabled = false;
+        visibilityToggle.removeAttribute("aria-disabled");
+      }
+    }
+
+    document.getElementById("albumNoteModal").classList.remove("hidden");
+  } catch (error) {
+    console.error("Error opening album note modal:", error);
+    await showCustomAlert("Failed to open album notes: " + error.message);
+  }
+}
+
+// Display other users' album-level notes
+function displayOtherUsersAlbumNotes(notesMap = {}) {
+  const container = document.getElementById("albumOtherUsersNotes");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const visibleNotes = Object.entries(notesMap).filter(
+    ([email, note]) =>
+      note && note.visible && email !== currentUser.email && note.text
+  );
+
+  if (visibleNotes.length === 0) return;
+
+  const title = document.createElement("div");
+  title.className = "other-users-notes-title";
+  title.textContent = "Participants Notes";
+  container.appendChild(title);
+
+  visibleNotes.forEach(([email, note]) => {
+    const participant = window.currentParticipants?.find(
+      (p) => p.email === email
+    );
+    if (!participant) return;
+
+    const card = document.createElement("div");
+    card.className = "user-note-card";
+
+    const header = document.createElement("div");
+    header.className = "user-note-header";
+
+    const avatar = document.createElement("img");
+    avatar.className = "user-note-avatar";
+    avatar.src = participant.picture;
+    avatar.alt = participant.name;
+    avatar.onerror = () => {
+      const emoji = getAnimalEmojiForUser(email);
+      const emojiSpan = document.createElement("div");
+      emojiSpan.textContent = emoji;
+      emojiSpan.style.fontSize = "20px";
+      avatar.replaceWith(emojiSpan);
+    };
+
+    const name = document.createElement("div");
+    name.className = "user-note-name";
+    name.textContent = participant.name.split(" ")[0];
+
+    header.appendChild(avatar);
+    header.appendChild(name);
+
+    const text = document.createElement("div");
+    text.className = "user-note-text";
+    text.textContent = note.text;
+
+    card.appendChild(header);
+    card.appendChild(text);
+    container.appendChild(card);
+  });
+}
+
+// Floating preview element (reused)
+let _albumNotePreviewEl = null;
+
+function _ensureAlbumNotePreviewEl() {
+  if (!_albumNotePreviewEl) {
+    _albumNotePreviewEl = document.createElement("div");
+    _albumNotePreviewEl.className = "album-note-preview hidden";
+    document.body.appendChild(_albumNotePreviewEl);
+  }
+  return _albumNotePreviewEl;
+}
+
+// Show album preview: display up to 2 public notes as snippets
+function showAlbumNotePreview(album, anchorEl) {
+  if (!album) return;
+  const notes = album.albumNotes || {};
+  const visibleEntries = Object.entries(notes).filter(
+    ([email, n]) => n && n.visible && n.text && n.text.trim() !== ""
+  );
+  if (visibleEntries.length === 0) return;
+
+  const preview = _ensureAlbumNotePreviewEl();
+  preview.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.className = "album-note-preview-title";
+  title.textContent = `${album.title} — Notes`;
+  preview.appendChild(title);
+
+  const list = document.createElement("div");
+  list.className = "album-note-preview-list";
+
+  // show first two notes
+  visibleEntries.slice(0, 2).forEach(([email, note]) => {
+    const participant = window.currentParticipants?.find(
+      (p) => p.email === email
+    );
+    const name = participant
+      ? participant.name.split(" ")[0]
+      : email.split("@")[0];
+
+    const item = document.createElement("div");
+    item.className = "album-note-preview-item";
+
+    const who = document.createElement("div");
+    who.className = "album-note-preview-who";
+    who.textContent = name;
+
+    const text = document.createElement("div");
+    text.className = "album-note-preview-text";
+    const snippet =
+      note.text.length > 140 ? note.text.slice(0, 137) + "…" : note.text;
+    text.textContent = snippet;
+
+    item.appendChild(who);
+    item.appendChild(text);
+    list.appendChild(item);
+  });
+
+  if (visibleEntries.length > 2) {
+    const more = document.createElement("div");
+    more.className = "album-note-preview-more";
+    more.textContent = `+${visibleEntries.length - 2} more`;
+    list.appendChild(more);
+  }
+
+  preview.appendChild(list);
+
+  // position near anchorEl
+  const rect = anchorEl.getBoundingClientRect();
+  const gap = 8;
+  preview.style.left =
+    Math.min(
+      Math.max(8, rect.left + rect.width / 2 - 140),
+      window.innerWidth - 16 - 280
+    ) + "px";
+  preview.style.top = Math.max(8, rect.top - preview.offsetHeight - 12) + "px";
+
+  // make visible
+  preview.classList.remove("hidden");
+}
+
+function hideAlbumNotePreview() {
+  if (_albumNotePreviewEl) {
+    _albumNotePreviewEl.classList.add("hidden");
+  }
+}
+
+// Toggle album notes visibility (UI)
+function toggleAlbumNotesVisibility() {
+  try {
+    const toggle = document.getElementById("albumNotesVisibilityToggle");
+    const label = document.getElementById("albumNotesVisibilityLabel");
+    if (!toggle) return;
+
+    if (toggle.disabled) return;
+
+    toggle.classList.toggle("private");
+    const pressed = !toggle.classList.contains("private");
+    toggle.setAttribute("aria-pressed", pressed ? "true" : "false");
+
+    if (label) {
+      const isPrivate = toggle.classList.contains("private");
+      label.textContent = isPrivate
+        ? "These notes are visible only to you "
+        : "These notes are visible to others";
+      // Update green state when These notes are visible to others
+      if (isPrivate) {
+        label.classList.remove("visible-others");
+      } else {
+        label.classList.add("visible-others");
+      }
+    }
+  } catch (e) {
+    console.error("Error in toggleAlbumNotesVisibility:", e);
+  }
+}
+
+// Save album-level notes
+async function saveAlbumNotes(options = {}) {
+  const { silent = false } = options || {};
+  if (!db || !currentUser || !window.currentAlbumNoteId) return;
+
+  // Prevent non-participants
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    if (!silent)
+      await showCustomAlert("Join the discussion to add album notes.");
+    return;
+  }
+
+  const albumId = window.currentAlbumNoteId;
+  const textarea = document.getElementById("albumNoteTextarea");
+  const visibilityToggle = document.getElementById(
+    "albumNotesVisibilityToggle"
+  );
+  const noteText = textarea ? textarea.value.trim() : "";
+  const isVisible = !visibilityToggle.classList.contains("private");
+
+  try {
+    const albumRef = db.collection("albums").doc(albumId);
+    const albumDoc = await albumRef.get();
+    if (!albumDoc.exists) return;
+
+    const albumData = albumDoc.data();
+    const notes = { ...(albumData.albumNotes || {}) };
+
+    if (noteText) {
+      notes[currentUser.email] = {
+        text: noteText,
+        visible: isVisible,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+    } else {
+      delete notes[currentUser.email];
+    }
+
+    await albumRef.update({ albumNotes: notes });
+
+    if (!silent) {
+      await showCustomAlert("Album notes saved successfully!", "Success");
+    } else {
+      showToast("Album notes auto-saved");
+    }
+
+    // Refresh displayed notes in modal
+    displayOtherUsersAlbumNotes(notes);
+
+    // Update in-memory album list if present
+    if (window.currentAlbums) {
+      const idx = window.currentAlbums.findIndex((a) => a.id === albumId);
+      if (idx !== -1) {
+        window.currentAlbums[idx].albumNotes = notes;
+      }
+    }
+  } catch (error) {
+    console.error("Error saving album notes:", error);
+    await showCustomAlert(`Failed to save album notes: ${error.message}`);
+  }
+}
+
+// Close album note modal (auto-saves)
+async function closeAlbumNoteModal() {
+  const modal = document.getElementById("albumNoteModal");
+  try {
+    await saveAlbumNotes({ silent: true });
+  } catch (e) {
+    console.warn("Auto-save album note failed:", e);
+  }
+  modal.classList.add("hidden");
+  window.currentAlbumNoteId = null;
+
+  // Refresh albums list to show note overlays/indicators
+  try {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+  } catch (e) {
+    console.warn("Failed to refresh albums after closing album note modal:", e);
   }
 }
 
@@ -4103,6 +4560,7 @@ async function loadAlbums(monthKey) {
         tracks: data.tracks || [],
         trackRatings: data.trackRatings || {},
         externalLinks: data.externalLinks || [],
+        albumNotes: data.albumNotes || {},
         addedBy: data.addedBy,
         addedByName: data.addedByName,
         locked: data.locked || false,

@@ -1,3 +1,103 @@
+/* Hover action buttons overlay (desktop only) */
+.album-action-buttons {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0.98);
+  display: flex;
+  gap: 36px;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 160ms ease, transform 160ms ease;
+  z-index: 20;
+}
+
+.album-action-buttons .action-btn {
+  /* rectangular, slightly taller than wide; capped to album size; 25% smaller than previous */
+  width: 180px; /* 240px * 0.75 */
+  height: 108px; /* slightly taller than before */
+  max-width: 90%;
+  max-height: 90%;
+  border-radius: 12px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.album-action-buttons .album-note-action {
+  background: rgba(79, 70, 229, 0.95);
+}
+
+.album-action-buttons .album-youtube-action {
+  background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+}
+
+/* Only show overlay on devices that support hover */
+@media (hover: hover) and (pointer: fine) {
+  .album-card:hover .album-action-buttons {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* On small screens, show action buttons without hover and reposition near bottom center */
+@media (max-width: 640px) {
+  .album-action-buttons {
+    /* center overlay in the middle of the album cover on mobile */
+    display: flex !important;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    bottom: auto;
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+    pointer-events: auto;
+    gap: 12px;
+    z-index: 30;
+    width: auto;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .album-action-buttons .action-btn {
+    /* Keep buttons compact on mobile while taller than wide */
+    width: 40%;
+    max-width: 220px;
+    height: 72px;
+    font-size: 18px;
+    border-radius: 10px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* Narrow phones: stack buttons vertically to avoid overflowing small covers */
+@media (max-width: 420px) {
+  .album-action-buttons {
+    flex-direction: column;
+    gap: 10px;
+    /* center the stacked buttons in the middle of the album */
+    top: 50%;
+    bottom: auto;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 88%;
+    align-items: center;
+  }
+
+  .album-action-buttons .action-btn {
+    width: 92%;
+    height: 76px;
+    font-size: 16px;
+  }
+}
 * {
   margin: 0;
   padding: 0;
@@ -606,6 +706,140 @@ body {
 
 .lock-btn:active {
   transform: scale(0.95);
+}
+
+/* Album Note Button */
+.album-note-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.92);
+  color: #fff;
+  border: none;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.24s ease;
+  z-index: 10;
+  position: absolute;
+  right: 52px;
+  top: 100%;
+  margin-top: 8px;
+}
+
+.album-note-btn:hover {
+  transform: scale(1.08);
+  background: rgba(79, 70, 229, 1);
+}
+
+.album-note-btn:active {
+  transform: scale(0.95);
+}
+
+/* Album-level note indicator (small badge) */
+.album-note-indicator {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.03)
+  );
+  color: #ffd966;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 12;
+}
+
+.album-note-indicator .note-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.album-note-indicator .note-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  line-height: 1;
+}
+
+/* Album note preview tooltip */
+.album-note-preview {
+  position: fixed;
+  z-index: 12000;
+  width: 280px;
+  max-width: calc(100% - 32px);
+  background: rgba(22, 22, 30, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+  padding: 10px;
+  color: #e6e6e6;
+  font-size: 13px;
+}
+
+.album-note-preview.hidden {
+  display: none;
+}
+
+.album-note-preview-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #ffd966;
+}
+.album-note-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.album-note-preview-item {
+  background: rgba(255, 255, 255, 0.02);
+  padding: 8px;
+  border-radius: 6px;
+}
+.album-note-preview-who {
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.album-note-preview-text {
+  font-size: 12px;
+  color: #dcdcdc;
+  max-height: 56px;
+  overflow: hidden;
+}
+.album-note-preview-more {
+  text-align: center;
+  color: #9ca3af;
+  font-size: 12px;
+  padding-top: 4px;
+}
+
+.album-note-indicator[title] {
+  cursor: default;
 }
 
 /* Unlock Button (Moderator) */
@@ -1607,6 +1841,26 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Mobile: put the note label and visibility controls on separate planes (stacked) */
+@media (max-width: 640px) {
+  .track-notes-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  /* Keep visibility controls on their own line and right-aligned */
+  .track-notes-header .visibility-controls {
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  /* Slightly reduce label size to prevent wrapping issues */
+  .track-notes-header label {
+    font-size: 0.9rem;
+  }
 }
 
 .visibility-label {
