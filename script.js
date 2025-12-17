@@ -3392,8 +3392,8 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     if (visibilityLabel) {
       const isPrivate = visibilityToggle.classList.contains("private");
       visibilityLabel.textContent = isPrivate
-        ? "This note is visible only to you "
-        : "These notes are visible only to you ";
+        ? "These notes are visible only to you"
+        : "These notes are visible to others";
       // Update class for color state
       if (isPrivate) {
         visibilityLabel.classList.remove("visible-others");
@@ -3607,8 +3607,8 @@ function toggleNotesVisibility() {
     if (label) {
       const isPrivate = toggle.classList.contains("private");
       label.textContent = isPrivate
-        ? "This note is visible only to you "
-        : "These notes are visible only to you ";
+        ? "These notes are visible only to you"
+        : "These notes are visible to others";
       if (isPrivate) {
         label.classList.remove("visible-others");
       } else {
