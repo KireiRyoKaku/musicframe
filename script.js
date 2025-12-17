@@ -1756,7 +1756,8 @@ async function processAddAlbum() {
     }
 
     const playlist = data.items[0];
-    const title = playlist.snippet.title;
+    const rawTitle = playlist.snippet.title;
+    const title = sanitizeAlbumTitle(rawTitle);
     const artist = playlist.snippet.channelTitle.replace(" - Topic", ""); // Remove "- Topic" from artist name
 
     let thumbnail =
@@ -1792,6 +1793,118 @@ async function processAddAlbum() {
     await addAlbum(title.trim(), artist.trim(), "", userLink);
   }
 }
+
+// Sanitize playlist/album titles coming from YouTube
+function sanitizeAlbumTitle(raw) {
+  if (!raw || typeof raw !== "string") return raw;
+  let s = raw.trim();
+
+  // Remove common leading prefixes like "Album -", "Album:", "Album —"
+  s = s.replace(/^Album\s*[:\-—–]\s*/i, "");
+
+  // Remove trailing "- YouTube" or "— YouTube" variants
+  s = s.replace(/\s*[-—–]\s*YouTube( Music)?$/i, "");
+
+  // Some titles include a trailing " - Topic" or similar; remove if present
+  s = s.replace(/\s*[-—–]\s*Topic$/i, "");
+
+  return s.trim();
+}
+
+// Sanitize artist/channel names for display (remove "YouTube"/"YouTube Music" etc.)
+function sanitizeArtist(raw) {
+  if (!raw || typeof raw !== "string") return "";
+  let s = raw.trim();
+
+  // Remove "- Topic" suffix
+  s = s.replace(/\s*[-—–]\s*Topic$/i, "");
+
+  // Remove trailing "- YouTube" or "— YouTube Music" variants
+  s = s.replace(/\s*[-—–]\s*YouTube( Music)?$/i, "");
+
+  // If the whole artist is just "YouTube" or "YouTube Music", clear it
+  if (/^YouTube( Music)?$/i.test(s)) s = "";
+
+  return s.trim();
+}
+
+// Migration: sanitize and persist artist fields for existing albums
+// Usage (from browser console):
+//   await window.migrateSanitizeArtists({dryRun: true}); // just preview
+//   await window.migrateSanitizeArtists({dryRun: false}); // perform updates
+async function migrateSanitizeArtists(options = {}) {
+  const { dryRun = false, batchSize = 400 } = options;
+  if (!db) {
+    console.error("Firestore `db` not available. Initialize auth first.");
+    return { ok: false, reason: "no-db" };
+  }
+
+  if (!confirm(`Run artist sanitize migration? dryRun=${!!dryRun}`)) {
+    console.log("Migration cancelled by user");
+    return { ok: false, reason: "cancelled" };
+  }
+
+  const snapshot = await db.collection("albums").get();
+  if (!snapshot || snapshot.empty) {
+    console.log("No albums found to migrate.");
+    return { ok: true, migrated: 0 };
+  }
+
+  let total = 0;
+  let toUpdate = [];
+
+  for (const doc of snapshot.docs) {
+    total++;
+    const data = doc.data() || {};
+    const raw = data.artist || "";
+    const sanitized = sanitizeArtist(raw);
+
+    // If sanitized empty or same as raw, skip (we only persist a cleaned non-empty value)
+    if (!sanitized || sanitized === raw) continue;
+
+    // prepare update: preserve original in artistRaw if not present
+    const updates = { artist: sanitized };
+    if (!data.artistRaw) updates.artistRaw = raw;
+
+    toUpdate.push({ id: doc.id, updates });
+  }
+
+  console.log(
+    `Albums scanned: ${total}, candidates to update: ${toUpdate.length}`
+  );
+
+  if (dryRun)
+    return { ok: true, dryRun: true, total, candidates: toUpdate.length };
+
+  // Commit in batches
+  let committed = 0;
+  let batch = db.batch();
+  let batchCount = 0;
+
+  for (const u of toUpdate) {
+    const ref = db.collection("albums").doc(u.id);
+    batch.update(ref, u.updates);
+    batchCount++;
+
+    if (batchCount >= batchSize) {
+      await batch.commit();
+      committed += batchCount;
+      batch = db.batch();
+      batchCount = 0;
+    }
+  }
+
+  if (batchCount > 0) {
+    await batch.commit();
+    committed += batchCount;
+  }
+
+  console.log(`Migration complete. Documents updated: ${committed}`);
+  return { ok: true, migrated: committed };
+}
+
+// Expose to console for manual invocation
+window.migrateSanitizeArtists = migrateSanitizeArtists;
 
 // Fetch playlist tracks from YouTube API
 async function fetchPlaylistTracks(playlistId) {
@@ -2150,7 +2263,15 @@ function updateAlbums(albums) {
       console.log("Loading cover:", album.coverUrl);
       const img = document.createElement("img");
       img.src = album.coverUrl;
-      img.alt = `${album.title} by ${album.artist}`;
+      const _artistAlt = sanitizeArtist(album.artist);
+      // Decide whether to fallback to raw artist: only if raw isn't a YouTube token
+      const rawArtist = album.artist ? album.artist.trim() : "";
+      const rawIsOnlyYouTube = /^YouTube( Music)?$/i.test(rawArtist);
+      const artistForAlt =
+        _artistAlt || (!rawIsOnlyYouTube && rawArtist ? rawArtist : "");
+      img.alt =
+        sanitizeAlbumTitle(album.title) +
+        (artistForAlt ? ` by ${artistForAlt}` : "");
       img.style.width = "100%";
       img.style.height = "100%";
       img.style.objectFit = "cover";
@@ -2178,13 +2299,25 @@ function updateAlbums(albums) {
     info.className = "album-info";
 
     const title = document.createElement("h3");
-    title.textContent = album.title;
-
-    const artist = document.createElement("p");
-    artist.textContent = album.artist;
+    title.textContent = sanitizeAlbumTitle(album.title);
 
     info.appendChild(title);
-    info.appendChild(artist);
+
+    const _artistText = sanitizeArtist(album.artist);
+    const rawArtistText = album.artist ? album.artist.trim() : "";
+    const rawIsOnlyYouTube2 = /^YouTube( Music)?$/i.test(rawArtistText);
+    if (_artistText) {
+      const artist = document.createElement("p");
+      artist.textContent = _artistText;
+      info.appendChild(artist);
+    } else if (rawArtistText && !rawIsOnlyYouTube2) {
+      // Show raw artist string if sanitization removed it and it's not just 'YouTube'
+      const artistRaw = document.createElement("p");
+      artistRaw.textContent = rawArtistText;
+      artistRaw.style.opacity = "0.72";
+      artistRaw.style.fontSize = "0.85rem";
+      info.appendChild(artistRaw);
+    }
 
     // Check if current user is a moderator
     const userIsModerator = currentUser && isModerator(currentUser.email);
@@ -3484,7 +3617,21 @@ async function showAlbumNoteModal(albumId) {
     // Populate modal info
     const titleEl = document.getElementById("albumNoteModalTitle");
     const infoEl = document.getElementById("albumNoteAlbumInfo");
-    if (titleEl) titleEl.textContent = `${album.title} — ${album.artist}`;
+    if (titleEl) {
+      const _artist = sanitizeArtist(album.artist);
+      const rawArtistTitle = album.artist ? album.artist.trim() : "";
+      const rawIsOnlyYouTube3 = /^YouTube( Music)?$/i.test(rawArtistTitle);
+      if (_artist) {
+        titleEl.textContent = `${sanitizeAlbumTitle(album.title)} — ${_artist}`;
+      } else if (rawArtistTitle && !rawIsOnlyYouTube3) {
+        // fall back to raw artist only if it's not just YouTube
+        titleEl.textContent = `${sanitizeAlbumTitle(
+          album.title
+        )} — ${rawArtistTitle}`;
+      } else {
+        titleEl.textContent = sanitizeAlbumTitle(album.title);
+      }
+    }
     if (infoEl)
       infoEl.textContent = album.description || "Add notes about this album";
 
@@ -3638,7 +3785,7 @@ function showAlbumNotePreview(album, anchorEl) {
 
   const title = document.createElement("div");
   title.className = "album-note-preview-title";
-  title.textContent = `${album.title} — Notes`;
+  title.textContent = `${sanitizeAlbumTitle(album.title)} — Notes`;
   preview.appendChild(title);
 
   const list = document.createElement("div");
