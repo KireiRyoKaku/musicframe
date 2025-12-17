@@ -525,6 +525,9 @@ function showCustomAlert(message, title = "Musicframe") {
 
     modal.classList.remove("hidden");
   });
+  // Re-run equalization after render and after a short delay (accounts for font/image load)
+  setTimeout(equalizeAlbumTitleHeights, 50);
+  setTimeout(equalizeAlbumTitleHeights, 300);
 }
 
 // Custom Confirm System
@@ -2336,6 +2339,11 @@ function updateAlbums(albums) {
               vinylEmoji.style.height = "100%";
               vinylEmoji.style.background = gradients[index % gradients.length];
               img.replaceWith(vinylEmoji);
+              setTimeout(() => {
+                if (typeof clampAlbumTitles === "function") clampAlbumTitles();
+                if (typeof equalizeAlbumTitleHeights === "function")
+                  equalizeAlbumTitleHeights();
+              }, 80);
             }
           }
         } catch (e) {
@@ -2343,6 +2351,13 @@ function updateAlbums(albums) {
         }
       };
       cover.appendChild(img);
+      img.addEventListener("load", () => {
+        setTimeout(() => {
+          if (typeof clampAlbumTitles === "function") clampAlbumTitles();
+          if (typeof equalizeAlbumTitleHeights === "function")
+            equalizeAlbumTitleHeights();
+        }, 80);
+      });
     } else {
       console.log("No cover URL, using gradient");
       cover.style.background = gradients[index % gradients.length];
@@ -2991,6 +3006,167 @@ function highlightParticipant(email) {
     participant.style.setProperty("--highlight-border", color.border);
     participant.style.setProperty("--highlight-shadow", color.shadow);
   }
+}
+
+// Equalize album title heights to the tallest title
+function equalizeAlbumTitleHeights() {
+  try {
+    const titles = Array.from(document.querySelectorAll(".album-info h3"));
+    if (!titles || titles.length === 0) return;
+
+    // Reset any previously set minHeights so measurement is natural
+    // Clear any previously applied minHeight to get natural measurements
+    titles.forEach((t) => (t.style.minHeight = ""));
+
+    // Ensure we measure the full, un-truncated text for each title.
+    // If `data-full-title` exists (from clampAlbumTitles), temporarily set it.
+    const originals = new Map();
+    titles.forEach((t) => {
+      originals.set(t, t.textContent);
+      if (t.dataset.fullTitle) t.textContent = t.dataset.fullTitle;
+    });
+
+    // Force reflow and measure the natural heights
+    let maxH = 0;
+    titles.forEach((t) => {
+      const h = Math.max(t.scrollHeight, t.getBoundingClientRect().height);
+      if (h > maxH) maxH = h;
+    });
+
+    // Restore the original text content (clamped/truncated state)
+    titles.forEach((t) => {
+      t.textContent = originals.get(t) || t.textContent;
+    });
+
+    // Apply same minHeight to all titles (round up)
+    if (maxH > 0) {
+      const px = Math.ceil(maxH) + "px";
+      titles.forEach((t) => {
+        t.style.minHeight = px;
+      });
+    }
+    // Re-apply JS clamping so any over-long titles get truncated visually
+    if (typeof clampAlbumTitles === "function") {
+      clampAlbumTitles();
+    }
+  } catch (e) {
+    console.warn("equalizeAlbumTitleHeights error:", e);
+  }
+}
+
+// Debounced resize handler to re-equalize on viewport changes
+let _equalizeResizeTimer = null;
+window.addEventListener("resize", () => {
+  if (_equalizeResizeTimer) clearTimeout(_equalizeResizeTimer);
+  _equalizeResizeTimer = setTimeout(() => {
+    equalizeAlbumTitleHeights();
+  }, 150);
+});
+
+// Clamp album titles to a max number of lines with JS fallback (works in Firefox)
+function clampAlbumTitles() {
+  try {
+    const titles = Array.from(document.querySelectorAll(".album-info h3"));
+    if (!titles.length) return;
+
+    const w = window.innerWidth;
+    let maxLines = 2;
+    if (w >= 1400) maxLines = 4;
+    else if (w >= 900) maxLines = 3;
+
+    titles.forEach((el) => {
+      // store full text
+      if (!el.dataset.fullTitle) el.dataset.fullTitle = el.textContent.trim();
+      const full = el.dataset.fullTitle;
+
+      // compute allowed height
+      const lineHeight =
+        parseFloat(getComputedStyle(el).lineHeight) ||
+        1.2 * parseFloat(getComputedStyle(el).fontSize);
+      const maxH = Math.ceil(lineHeight * maxLines);
+
+      // Fast path: if current scrollHeight fits, restore full text
+      el.textContent = full;
+      if (el.scrollHeight <= maxH) return;
+
+      // Binary search for max chars that fit
+      let lo = 0;
+      let hi = full.length;
+      let best = "";
+      while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        el.textContent = full.slice(0, mid).trim() + "…";
+        if (el.scrollHeight <= maxH) {
+          best = el.textContent;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      el.textContent = best || full.slice(0, 30).trim() + "…";
+    });
+  } catch (e) {
+    console.warn("clampAlbumTitles error:", e);
+  }
+}
+
+// Debounced clamp on resize
+let _clampResizeTimer = null;
+window.addEventListener("resize", () => {
+  if (_clampResizeTimer) clearTimeout(_clampResizeTimer);
+  _clampResizeTimer = setTimeout(() => {
+    clampAlbumTitles();
+    if (typeof equalizeAlbumInfoHeights === "function")
+      equalizeAlbumInfoHeights();
+  }, 180);
+});
+
+// Equalize the full .album-info container heights to the tallest one
+function equalizeAlbumInfoHeights() {
+  try {
+    const infos = Array.from(document.querySelectorAll(".album-info"));
+    if (!infos || infos.length === 0) return;
+
+    // Reset any previously set minHeight
+    infos.forEach((i) => (i.style.minHeight = ""));
+
+    // Temporarily ensure titles show full text for accurate measurement
+    const titles = Array.from(document.querySelectorAll(".album-info h3"));
+    const titleOriginals = new Map();
+    titles.forEach((t) => {
+      titleOriginals.set(t, t.textContent);
+      if (t.dataset.fullTitle) t.textContent = t.dataset.fullTitle;
+    });
+
+    // Measure natural heights of the info blocks
+    let maxH = 0;
+    infos.forEach((i) => {
+      const h = Math.max(i.scrollHeight, i.getBoundingClientRect().height);
+      if (h > maxH) maxH = h;
+    });
+
+    // Restore title text (clamped/truncated state)
+    titles.forEach((t) => {
+      if (titleOriginals.has(t)) t.textContent = titleOriginals.get(t);
+    });
+
+    // Apply the max height as minHeight for visual consistency
+    if (maxH > 0) {
+      const px = Math.ceil(maxH) + "px";
+      infos.forEach((i) => (i.style.minHeight = px));
+    }
+
+    // Re-apply JS clamping so long titles still show ellipsis
+    if (typeof clampAlbumTitles === "function") clampAlbumTitles();
+  } catch (e) {
+    console.warn("equalizeAlbumInfoHeights error:", e);
+  }
+}
+
+// Backwards-compatible alias
+function equalizeAlbumTitleHeights() {
+  if (typeof equalizeAlbumInfoHeights === "function")
+    equalizeAlbumInfoHeights();
 }
 
 // Remove highlight from participant
@@ -4955,6 +5131,14 @@ async function loadAlbums(monthKey) {
     // Update the albums array
     updateAlbums(albums);
     updateAddAlbumButton(albums);
+
+    // Equalize album title heights so long titles don't break layout
+    if (typeof clampAlbumTitles === "function") {
+      clampAlbumTitles();
+    }
+    if (typeof equalizeAlbumTitleHeights === "function") {
+      equalizeAlbumTitleHeights();
+    }
 
     // Update vote UI if voting is active
     if (votingActive) {

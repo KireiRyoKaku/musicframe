@@ -627,6 +627,12 @@ body {
   position: relative;
 }
 
+/* Use flex column so we can control fixed title area height reliably */
+.album-card {
+  display: flex;
+  flex-direction: column;
+}
+
 .album-card.album-hover {
   transform: translateY(-8px);
   box-shadow: 0 10px 30px var(--album-shadow, rgba(102, 126, 234, 0.4));
@@ -1001,6 +1007,62 @@ body {
   font-weight: 600;
   color: rgba(255, 255, 255, 0.9);
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Ensure album titles wrap and have consistent spacing */
+.album-info h3 {
+  margin: 12px 16px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+/* Clamp title to a fixed number of lines with ellipsis */
+.album-info h3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* default clamp: 2 lines on small screens */
+  -webkit-line-clamp: 2;
+  max-height: calc(1.2em * 2);
+}
+
+@media (min-width: 900px) {
+  /* allow 3 lines on larger screens */
+  .album-info h3 {
+    -webkit-line-clamp: 3;
+    max-height: calc(1.2em * 3);
+  }
+}
+
+@media (min-width: 1400px) {
+  /* allow 4 lines on very wide screens */
+  .album-info h3 {
+    -webkit-line-clamp: 4;
+    max-height: calc(1.2em * 4);
+  }
+}
+
+/* Give the whole album-info area a fixed min-height matching the max title block */
+.album-info {
+  /* padding top+bottom approx 24px (12px each) + title height */
+  min-height: calc(1.2em * 2 + 24px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+@media (min-width: 900px) {
+  .album-info {
+    min-height: calc(1.2em * 3 + 24px);
+  }
+}
+
+@media (min-width: 1400px) {
+  .album-info {
+    min-height: calc(1.2em * 4 + 24px);
+  }
 }
 
 .album-info {
