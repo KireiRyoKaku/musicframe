@@ -2276,18 +2276,71 @@ function updateAlbums(albums) {
       img.style.height = "100%";
       img.style.objectFit = "cover";
       img.onerror = () => {
-        console.error("Failed to load image:", album.coverUrl);
-        // Show vinyl record emoji as fallback
-        const vinylEmoji = document.createElement("div");
-        vinylEmoji.textContent = "💿";
-        vinylEmoji.style.fontSize = "100px";
-        vinylEmoji.style.display = "flex";
-        vinylEmoji.style.alignItems = "center";
-        vinylEmoji.style.justifyContent = "center";
-        vinylEmoji.style.width = "100%";
-        vinylEmoji.style.height = "100%";
-        vinylEmoji.style.background = gradients[index % gradients.length];
-        img.replaceWith(vinylEmoji);
+        try {
+          console.warn("Failed to load image (attempting fallbacks):", img.src);
+          // Attempt progressive YouTube thumbnail fallbacks if applicable
+          const fallbackOrder = [
+            "maxresdefault",
+            "sddefault",
+            "hqdefault",
+            "mqdefault",
+            "default",
+          ];
+          const src = img.src || "";
+          let attempted = parseInt(img.dataset.thumbAttempts || "0", 10);
+
+          // find which token is currently in the src
+          let replaced = false;
+          for (let i = 0; i < fallbackOrder.length; i++) {
+            const token = fallbackOrder[i];
+            if (src.includes(token)) {
+              const nextIndex = Math.min(
+                i + 1 + attempted,
+                fallbackOrder.length - 1
+              );
+              const nextToken = fallbackOrder[nextIndex];
+              if (nextToken && nextToken !== token) {
+                const newSrc = src.replace(token, nextToken);
+                img.dataset.thumbAttempts = String(attempted + 1);
+                img.src = newSrc;
+                replaced = true;
+                break;
+              }
+            }
+          }
+
+          if (!replaced) {
+            // If no recognizable token or we've exhausted fallbacks, try constructing a video-based thumbnail
+            const triedVideo = img.dataset.triedVideo === "1";
+            const firstVideoId =
+              (album &&
+                album.tracks &&
+                album.tracks[0] &&
+                album.tracks[0].videoId) ||
+              null;
+            if (!triedVideo && firstVideoId) {
+              img.dataset.triedVideo = "1";
+              const videoUrl = `https://i.ytimg.com/vi/${firstVideoId}/hqdefault.jpg`;
+              console.log("Trying video-based thumbnail:", videoUrl);
+              img.src = videoUrl;
+              replaced = true;
+            } else {
+              // Final fallback: show vinyl record emoji
+              const vinylEmoji = document.createElement("div");
+              vinylEmoji.textContent = "💿";
+              vinylEmoji.style.fontSize = "100px";
+              vinylEmoji.style.display = "flex";
+              vinylEmoji.style.alignItems = "center";
+              vinylEmoji.style.justifyContent = "center";
+              vinylEmoji.style.width = "100%";
+              vinylEmoji.style.height = "100%";
+              vinylEmoji.style.background = gradients[index % gradients.length];
+              img.replaceWith(vinylEmoji);
+            }
+          }
+        } catch (e) {
+          console.error("Error in img.onerror fallback:", e);
+        }
       };
       cover.appendChild(img);
     } else {
