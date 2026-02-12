@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Musicframe - Monthly Music Reviews</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=31" />
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -45,6 +45,28 @@
           </svg>
           Sign in with Google
         </button>
+      </div>
+    </div>
+
+    <!-- Vote Best Album Results Modal -->
+    <div id="bestAlbumModal" class="modal-overlay hidden">
+      <div class="modal-container modal-container-large">
+        <div class="modal-header">
+          <h2 id="bestAlbumModalTitle">🏆 Best Album</h2>
+          <button class="modal-close" id="closeBestAlbumModal">&times;</button>
+        </div>
+        <div class="modal-body" id="bestAlbumResults">
+          <!-- Results populated by JS -->
+        </div>
+        <div class="modal-footer" style="text-align: center">
+          <button
+            type="button"
+            class="modal-btn modal-btn-secondary"
+            id="closeBestAlbumModalBtn"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
 
@@ -126,28 +148,16 @@
             🔄 Fetch Tracks
           </button>
           <button
-            id="endVotingBtn"
+            id="removeAllParticipantsBtn"
             class="join-discussion-btn"
             style="
-              display: none;
               background: linear-gradient(135deg, #dc2626, #b91c1c);
               font-size: 0.9rem;
               padding: 10px 20px;
             "
+            title="Remove all participants from this month's discussion"
           >
-            🛑 End Voting
-          </button>
-          <button
-            id="resetVotingBtn"
-            class="join-discussion-btn"
-            style="
-              display: none;
-              background: linear-gradient(135deg, #f59e0b, #d97706);
-              font-size: 0.9rem;
-              padding: 10px 20px;
-            "
-          >
-            🔄 Reset Voting
+            🗑️ Remove All Participants
           </button>
         </div>
 
@@ -168,63 +178,28 @@
         <!-- Albums Section -->
         <section class="albums-section">
           <h2>This Month's Albums</h2>
-          <div
-            id="votingModeTitle"
-            style="
-              text-align: center;
-              margin: -10px 0 20px 0;
-              font-size: 1.3rem;
-              font-weight: 600;
-              color: #ffd700;
-              text-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
-              display: none;
-            "
-          >
-            ⏰ TIME TO CHOOSE
-          </div>
-          <div
-            id="votingStatusMessage"
-            style="
-              text-align: center;
-              margin: 10px 0;
-              font-size: 1.1rem;
-              color: #ffd700;
-              display: none;
-            "
-          ></div>
           <div style="text-align: center; margin: 20px 0">
             <button id="addAlbumBtn" class="join-discussion-btn">
               + Add Your Album
+            </button>
+            <button
+              id="voteBestAlbumBtn"
+              class="join-discussion-btn vote-best-album-btn hidden"
+            >
+              🏆 Vote Best Album
+            </button>
+            <button
+              id="resetVotingBtn"
+              class="join-discussion-btn reset-voting-btn hidden"
+              onclick="resetVoting()"
+            >
+              🔄 Reset Voting
             </button>
           </div>
           <div class="albums-grid" id="albumsGrid">
             <!-- Album covers will be displayed here dynamically -->
           </div>
-          <div style="text-align: center; margin: 20px 0">
-            <button id="startVotingBtn" class="join-discussion-btn">
-              🗳️ Start this month's voting now!
-            </button>
-            <button
-              id="submitVotesBtn"
-              class="join-discussion-btn"
-              style="
-                display: none;
-                margin-left: 10px;
-                background: linear-gradient(135deg, #48bb78, #38a169);
-              "
-            >
-              ✅ Submit My Votes
-            </button>
-          </div>
         </section>
-      </div>
-    </div>
-
-    <!-- Voting Started Overlay -->
-    <div id="votingOverlay" class="voting-overlay hidden">
-      <div class="voting-overlay-content">
-        <h1 class="voting-overlay-title">🗳️ VOTING HAS STARTED!</h1>
-        <p class="voting-overlay-subtitle">Cast your votes now</p>
       </div>
     </div>
 
@@ -389,6 +364,53 @@
             <div id="trackPlayer"></div>
           </div>
 
+          <!-- Track Rating 0-10 Scale -->
+          <div class="rating-scale-section">
+            <div class="rating-scale-header">
+              <label>Your Rating</label>
+              <div class="visibility-controls">
+                <span id="trackRatingVisibilityLabel" class="visibility-label"
+                  >This rating is visible only to you
+                </span>
+                <button
+                  type="button"
+                  class="visibility-toggle"
+                  id="trackRatingVisibilityToggle"
+                  title="Toggle rating visibility"
+                  aria-pressed="false"
+                >
+                  <span class="visibility-icon">👁️‍🗨️</span>
+                </button>
+              </div>
+            </div>
+            <div class="rating-slider-container" id="trackRatingGrid">
+              <div class="rating-slider-value" id="trackRatingValue">—</div>
+              <input
+                type="range"
+                class="rating-slider"
+                id="trackRatingSlider"
+                min="0"
+                max="10"
+                step="0.5"
+                value="5"
+              />
+              <div class="rating-slider-labels">
+                <span>0</span><span>5</span><span>10</span>
+              </div>
+            </div>
+            <div class="rating-actions">
+              <button
+                type="button"
+                class="rating-clear-btn"
+                id="clearTrackRating"
+              >
+                Clear Rating
+              </button>
+            </div>
+            <!-- Show other users' ratings for this track -->
+            <div id="trackRatingsDisplay" class="track-ratings-display"></div>
+          </div>
+
           <div class="rating-options">
             <button class="rating-btn favorite-btn" id="rateFavorite">
               <span class="rating-emoji">⭐</span>
@@ -455,7 +477,7 @@
     <div id="albumNoteModal" class="modal-overlay hidden">
       <div class="modal-container modal-container-large">
         <div class="modal-header">
-          <h2 id="albumNoteModalTitle">Album Notes</h2>
+          <h2 id="albumNoteModalTitle">Rate Album</h2>
           <button
             type="button"
             class="modal-close"
@@ -467,8 +489,64 @@
         </div>
         <div class="modal-body">
           <p class="modal-description" id="albumNoteAlbumInfo">
-            Add notes about this album
+            Rate this album and add notes
           </p>
+
+          <!-- Album Rating 0-10 Scale -->
+          <div
+            id="suggestedScoreSection"
+            class="suggested-score-section hidden"
+          >
+            <label class="suggested-score-title"
+              >Suggested score based on your track ratings</label
+            >
+            <div id="bayesianSuggestion" class="bayesian-suggestion"></div>
+          </div>
+          <div class="rating-scale-section">
+            <div class="rating-scale-header">
+              <label>Your Album Rating</label>
+              <div class="visibility-controls">
+                <span id="albumRatingVisibilityLabel" class="visibility-label"
+                  >This rating is visible only to you
+                </span>
+                <button
+                  type="button"
+                  class="visibility-toggle"
+                  id="albumRatingVisibilityToggle"
+                  title="Toggle rating visibility"
+                  aria-pressed="false"
+                >
+                  <span class="visibility-icon">👁️‍🗨️</span>
+                </button>
+              </div>
+            </div>
+            <div class="rating-slider-container" id="albumRatingGrid">
+              <div class="rating-slider-value" id="albumRatingValue">—</div>
+              <input
+                type="range"
+                class="rating-slider"
+                id="albumRatingSlider"
+                min="0"
+                max="10"
+                step="0.5"
+                value="5"
+              />
+              <div class="rating-slider-labels">
+                <span>0</span><span>5</span><span>10</span>
+              </div>
+            </div>
+            <div class="rating-actions">
+              <button
+                type="button"
+                class="rating-clear-btn"
+                id="clearAlbumRating"
+              >
+                Clear Rating
+              </button>
+            </div>
+            <!-- Show other users' ratings for this album -->
+            <div id="albumRatingsDisplay" class="track-ratings-display"></div>
+          </div>
 
           <div class="track-notes-section">
             <div class="track-notes-header">
@@ -511,134 +589,6 @@
       </div>
     </div>
 
-    <!-- Voting Warning Modal -->
-    <div id="votingWarningModal" class="modal-overlay hidden">
-      <div class="modal-container">
-        <div class="modal-header">
-          <h2>⚠️ Warning: Starting Voting</h2>
-          <button class="modal-close" id="closeVotingWarning">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-description">
-            Make sure all participants have added their albums and are ready to
-            vote.
-          </p>
-          <p class="modal-description">
-            Once voting starts, everyone can cast their votes (3 points and 1
-            point).
-          </p>
-          <p class="modal-description" style="font-weight: 600; color: #f59e0b">
-            Do you want to proceed?
-          </p>
-          <div class="modal-buttons">
-            <button class="modal-btn modal-btn-cancel" id="cancelVotingWarning">
-              Cancel
-            </button>
-            <button class="modal-btn modal-btn-primary" id="confirmVotingStart">
-              Continue
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Second Voting Confirmation Modal -->
-    <div id="votingConfirmModal" class="modal-overlay hidden">
-      <div class="modal-container">
-        <div class="modal-header">
-          <h2 style="color: #ef4444">⚠️ Final Confirmation</h2>
-          <button class="modal-close" id="closeVotingConfirm">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p
-            class="modal-description"
-            style="
-              font-size: 1.3rem;
-              font-weight: 700;
-              color: #ffffff;
-              text-align: center;
-              margin: 30px 0;
-            "
-          >
-            ARE YOU <strong style="color: #ef4444">REALLY</strong> SURE?
-          </p>
-          <div class="modal-buttons">
-            <button class="modal-btn modal-btn-cancel" id="cancelVotingConfirm">
-              no...
-            </button>
-            <button
-              class="modal-btn modal-btn-primary"
-              id="confirmVotingGo"
-              style="background: #10b981; font-weight: 700"
-            >
-              GO!
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Reset Voting Confirmation Modal -->
-    <div id="resetVotingConfirmModal" class="modal-overlay hidden">
-      <div class="modal-container">
-        <div class="modal-header">
-          <h2>🔄 Reset All Votes?</h2>
-          <button class="modal-close" id="closeResetVotingConfirm">
-            &times;
-          </button>
-        </div>
-        <div class="modal-body">
-          <p style="margin-bottom: 15px">
-            This will clear ALL votes for this month and allow voting to start
-            fresh.
-          </p>
-          <p style="color: #ef4444; font-weight: 600">
-            ⚠️ This action cannot be undone!
-          </p>
-        </div>
-        <div class="modal-buttons">
-          <button class="modal-btn modal-btn-secondary" id="cancelResetVoting">
-            Cancel
-          </button>
-          <button class="modal-btn modal-btn-danger" id="confirmResetVoting">
-            Yes, Reset All Votes
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- End Voting Confirmation Modal -->
-    <div id="endVotingConfirmModal" class="modal-overlay hidden">
-      <div class="modal-container">
-        <div class="modal-header">
-          <h2>🛑 End Voting Now?</h2>
-          <button class="modal-close" id="closeEndVotingConfirm">
-            &times;
-          </button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-description" style="margin-bottom: 15px">
-            This will end the voting session immediately.
-          </p>
-          <p class="modal-description" style="color: #f59e0b; font-weight: 600">
-            ⚠️ Not all participants may have voted yet.
-          </p>
-          <div class="modal-buttons">
-            <button class="modal-btn modal-btn-cancel" id="cancelEndVoting">
-              Cancel
-            </button>
-            <button
-              class="modal-btn modal-btn-primary"
-              id="confirmEndVoting"
-              style="background: linear-gradient(135deg, #dc2626, #b91c1c)"
-            >
-              Yes, End Voting
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Leave Discussion Confirmation Modal -->
     <div id="leaveDiscussionModal" class="modal-overlay hidden">
       <div class="modal-container">
@@ -663,34 +613,6 @@
               style="background: linear-gradient(135deg, #dc2626, #b91c1c)"
             >
               Yes, Leave
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Voting Modal -->
-    <div id="votingModal" class="modal-overlay hidden">
-      <div class="modal-container modal-container-large">
-        <div class="modal-header">
-          <h2>Vote for Albums</h2>
-          <button class="modal-close" id="closeVotingModal">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p class="modal-description">
-            You have <strong>2 votes</strong>: one worth
-            <strong>3 points</strong> and one worth <strong>1 point</strong>.
-            <br />You cannot vote for your own album.
-          </p>
-          <div id="votingAlbumsList" class="voting-albums-list">
-            <!-- Albums will be populated here -->
-          </div>
-          <div class="modal-buttons">
-            <button class="modal-btn modal-btn-cancel" id="cancelVoting">
-              Cancel
-            </button>
-            <button class="modal-btn modal-btn-primary" id="submitVotes">
-              Submit Votes
             </button>
           </div>
         </div>
@@ -723,6 +645,6 @@
       ▲
     </button>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=4"></script>
   </body>
 </html>

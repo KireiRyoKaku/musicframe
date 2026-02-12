@@ -23,7 +23,6 @@ const features = [
   'Take notes for the whole album <sup class="feature-new">NEW</sup>',
   'Make notes visible to others <sup class="feature-new">NEW</sup>',
   "Dive deep into music",
-  "Vote on albums",
   "Lock your album",
   "Edit album details",
   "View track ratings",
@@ -33,7 +32,6 @@ const features = [
   "See moderator actions",
   "Fetch track listings",
   "Manage external links",
-  "Real-time voting updates",
 ];
 let currentFeatureIndex = 0;
 
@@ -234,7 +232,7 @@ async function migrateAlbumsWithTracks() {
 
   const confirmMigrate = await showCustomConfirm(
     "This will fetch and add track listings to all existing albums that have YouTube Music links. Continue?",
-    "Migrate Tracks"
+    "Migrate Tracks",
   );
   if (!confirmMigrate) return;
 
@@ -273,14 +271,18 @@ async function migrateAlbumsWithTracks() {
       console.log(`Fetching tracks for: ${album.title}`);
 
       // Fetch tracks
-      const tracks = await fetchPlaylistTracks(playlistId);
+      const { tracks, trackArtist } = await fetchPlaylistTracks(playlistId);
 
       if (tracks.length > 0) {
-        // Update album with tracks
-        await db.collection("albums").doc(doc.id).update({
+        // Update album with tracks and artist if missing
+        const updateData = {
           tracks: tracks,
           playlistId: playlistId,
-        });
+        };
+        if (trackArtist && !sanitizeArtist(album.artist)) {
+          updateData.artist = trackArtist;
+        }
+        await db.collection("albums").doc(doc.id).update(updateData);
         console.log(`Updated ${album.title} with ${tracks.length} tracks`);
         updated++;
       } else {
@@ -294,7 +296,7 @@ async function migrateAlbumsWithTracks() {
 
     await showCustomAlert(
       `Migration complete!\nUpdated: ${updated}\nSkipped: ${skipped}\nFailed: ${failed}`,
-      "Migration Complete"
+      "Migration Complete",
     );
 
     // Reload albums to show tracks
@@ -303,7 +305,7 @@ async function migrateAlbumsWithTracks() {
     console.error("Migration error:", error);
     await showCustomAlert(
       `Migration failed: ${error.message}`,
-      "Migration Failed"
+      "Migration Failed",
     );
   }
 }
@@ -337,7 +339,7 @@ async function loadModerators() {
   } catch (error) {
     console.warn(
       "Could not load moderators from Firestore (using defaults):",
-      error.message
+      error.message,
     );
     // Keep using the default MODERATORS array defined above
   }
@@ -372,7 +374,7 @@ async function handleGoogleSignIn() {
 
   if (!auth) {
     await showCustomAlert(
-      "Authentication not initialized. Please refresh the page."
+      "Authentication not initialized. Please refresh the page.",
     );
     return;
   }
@@ -391,7 +393,7 @@ async function handleGoogleSignIn() {
       await auth.signOut();
       await showCustomAlert(
         "Access denied. Your email is not authorized to use this application.",
-        "Access Denied"
+        "Access Denied",
       );
       console.warn("Unauthorized login attempt:", user.email);
       return;
@@ -421,7 +423,7 @@ async function handleGoogleSignIn() {
     if (error.code === "auth/popup-blocked") {
       await showCustomAlert(
         "Pop-up was blocked. Please allow pop-ups for this site and try again.",
-        "Pop-up Blocked"
+        "Pop-up Blocked",
       );
     } else if (error.code === "auth/popup-closed-by-user") {
       console.log("User closed the sign-in popup");
@@ -442,7 +444,7 @@ function parseJwt(token) {
       .map(function (c) {
         return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
       })
-      .join("")
+      .join(""),
   );
   return JSON.parse(jsonPayload);
 }
@@ -492,9 +494,6 @@ function showMainContent() {
 
   // Initialize the main app
   updateDisplay();
-
-  // Listen for voting state changes
-  setupVotingListener();
 }
 
 // Custom Alert System
@@ -525,9 +524,6 @@ function showCustomAlert(message, title = "Musicframe") {
 
     modal.classList.remove("hidden");
   });
-  // Re-run equalization after render and after a short delay (accounts for font/image load)
-  setTimeout(equalizeAlbumTitleHeights, 50);
-  setTimeout(equalizeAlbumTitleHeights, 300);
 }
 
 // Custom Confirm System
@@ -618,45 +614,8 @@ function showToast(message, duration = 1800) {
   }
 }
 
-// Setup real-time listener for voting state
-function setupVotingListener() {
-  const monthKey = getMonthKey();
-
-  // Listen to albums collection for voting state changes
-  db.collection("albums")
-    .where("monthKey", "==", monthKey)
-    .onSnapshot(
-      (snapshot) => {
-        const wasActive = window.currentVotingActive;
-        let isActive = false;
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data.votingActive === true) {
-            isActive = true;
-          }
-        });
-
-        window.currentVotingActive = isActive;
-
-        // If voting just started, show overlay
-        if (!wasActive && isActive) {
-          showVotingOverlay();
-          loadAlbums(monthKey);
-        } else if (wasActive !== isActive) {
-          // Reload if state changed
-          loadAlbums(monthKey);
-        }
-      },
-      (error) => {
-        console.log("Albums listener error:", error);
-        window.currentVotingActive = false;
-      }
-    );
-}
-
 // Sign out
-function signOut() {
+async function signOut() {
   // Clear user session
   localStorage.removeItem("user");
   currentUser = null;
@@ -668,8 +627,14 @@ function signOut() {
   loginOverlay?.classList.remove("hidden");
   mainContent?.classList.add("hidden");
 
-  // Sign out from Google
-  google.accounts.id.disableAutoSelect();
+  // Sign out from Firebase Auth
+  try {
+    if (auth) {
+      await auth.signOut();
+    }
+  } catch (error) {
+    console.error("Error signing out from Firebase:", error);
+  }
 }
 
 // Initialize the page
@@ -719,17 +684,8 @@ function setupEventListeners() {
     .getElementById("migrateTracksBtn")
     ?.addEventListener("click", migrateAlbumsWithTracks);
   document
-    .getElementById("startVotingBtn")
-    ?.addEventListener("click", showVotingModal);
-  document
-    .getElementById("submitVotesBtn")
-    ?.addEventListener("click", submitVotes);
-  document
-    .getElementById("endVotingBtn")
-    ?.addEventListener("click", showEndVotingConfirmModal);
-  document
-    .getElementById("resetVotingBtn")
-    ?.addEventListener("click", showResetVotingConfirmModal);
+    .getElementById("removeAllParticipantsBtn")
+    ?.addEventListener("click", removeAllParticipants);
 
   // Album Modal event listeners
   document
@@ -820,6 +776,14 @@ function setupEventListeners() {
   document
     .getElementById("cancelRateTrack")
     ?.addEventListener("click", closeRateTrackModal);
+
+  // Track rating slider event listeners
+  attachSliderListeners("trackRatingSlider", handleTrackRatingClick);
+  document
+    .getElementById("clearTrackRating")
+    ?.addEventListener("click", clearTrackRating);
+
+  // Old-style rating button event listeners
   document
     .getElementById("rateFavorite")
     ?.addEventListener("click", () => applyTrackRating("favorite"));
@@ -837,6 +801,9 @@ function setupEventListeners() {
   document
     .getElementById("notesVisibilityToggle")
     ?.addEventListener("click", toggleNotesVisibility);
+  document
+    .getElementById("trackRatingVisibilityToggle")
+    ?.addEventListener("click", toggleTrackRatingVisibility);
   // Save button removed from UI; notes are auto-saved on modal close
 
   // Close modal on overlay click
@@ -856,6 +823,15 @@ function setupEventListeners() {
   document
     .getElementById("albumNotesVisibilityToggle")
     ?.addEventListener("click", toggleAlbumNotesVisibility);
+  document
+    .getElementById("albumRatingVisibilityToggle")
+    ?.addEventListener("click", toggleAlbumRatingVisibility);
+
+  // Album rating slider event listeners
+  attachSliderListeners("albumRatingSlider", handleAlbumRatingClick);
+  document
+    .getElementById("clearAlbumRating")
+    ?.addEventListener("click", clearAlbumRating);
 
   // Close modal on overlay click
   document.getElementById("albumNoteModal")?.addEventListener("click", (e) => {
@@ -874,6 +850,20 @@ function setupEventListeners() {
   document
     .getElementById("saveEditLinks")
     ?.addEventListener("click", saveEditedLinks);
+
+  // Vote Best Album
+  document
+    .getElementById("voteBestAlbumBtn")
+    ?.addEventListener("click", voteBestAlbum);
+  document
+    .getElementById("closeBestAlbumModal")
+    ?.addEventListener("click", closeBestAlbumModal);
+  document
+    .getElementById("closeBestAlbumModalBtn")
+    ?.addEventListener("click", closeBestAlbumModal);
+  document.getElementById("bestAlbumModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "bestAlbumModal") closeBestAlbumModal();
+  });
   document
     .getElementById("addNewLinkBtn")
     ?.addEventListener("click", addNewLinkRow);
@@ -885,57 +875,8 @@ function setupEventListeners() {
     }
   });
 
-  // Custom alert modal event listeners
-  document
-    .getElementById("closeCustomAlert")
-    ?.addEventListener("click", closeCustomAlert);
-  document
-    .getElementById("confirmCustomAlert")
-    ?.addEventListener("click", closeCustomAlert);
-
-  // Voting warning modal event listeners
-  document
-    .getElementById("closeVotingWarning")
-    ?.addEventListener("click", closeVotingWarningModal);
-  document
-    .getElementById("cancelVotingWarning")
-    ?.addEventListener("click", closeVotingWarningModal);
-  document
-    .getElementById("confirmVotingStart")
-    ?.addEventListener("click", showVotingConfirmModal);
-
-  // Second voting confirmation modal event listeners
-  document
-    .getElementById("closeVotingConfirm")
-    ?.addEventListener("click", closeVotingConfirmModal);
-  document
-    .getElementById("cancelVotingConfirm")
-    ?.addEventListener("click", closeVotingConfirmModal);
-  document
-    .getElementById("confirmVotingGo")
-    ?.addEventListener("click", confirmVotingStart);
-
-  // Reset voting confirmation modal event listeners
-  document
-    .getElementById("closeResetVotingConfirm")
-    ?.addEventListener("click", closeResetVotingConfirmModal);
-  document
-    .getElementById("cancelResetVoting")
-    ?.addEventListener("click", closeResetVotingConfirmModal);
-  document
-    .getElementById("confirmResetVoting")
-    ?.addEventListener("click", confirmResetVoting);
-
-  // End voting confirmation modal event listeners
-  document
-    .getElementById("closeEndVotingConfirm")
-    ?.addEventListener("click", closeEndVotingConfirmModal);
-  document
-    .getElementById("cancelEndVoting")
-    ?.addEventListener("click", closeEndVotingConfirmModal);
-  document
-    .getElementById("confirmEndVoting")
-    ?.addEventListener("click", confirmEndVoting);
+  // Custom alert modal event listeners are handled dynamically
+  // by showCustomAlert/showCustomConfirm via inline onclick handlers
 
   // Leave discussion modal event listeners
   document
@@ -947,24 +888,6 @@ function setupEventListeners() {
   document
     .getElementById("confirmLeaveDiscussion")
     ?.addEventListener("click", confirmLeaveDiscussion);
-
-  // Voting Modal event listeners
-  document
-    .getElementById("closeVotingModal")
-    ?.addEventListener("click", closeVotingModal);
-  document
-    .getElementById("cancelVoting")
-    ?.addEventListener("click", closeVotingModal);
-  document
-    .getElementById("submitVotes")
-    ?.addEventListener("click", submitVotes);
-
-  // Close modal on overlay click
-  document.getElementById("votingModal")?.addEventListener("click", (e) => {
-    if (e.target.id === "votingModal") {
-      closeVotingModal();
-    }
-  });
 }
 
 function closeAddAlbumModal() {
@@ -996,7 +919,7 @@ async function showEditLinksModal(albumId) {
   // Load current links
   const albumDoc = await db.collection("albums").doc(albumId).get();
   if (!albumDoc.exists) {
-    alert("Album not found");
+    await showCustomAlert("Album not found");
     return;
   }
 
@@ -1201,7 +1124,7 @@ function showLockConfirmModal(albumId) {
 async function processLockAlbum() {
   const albumId = window.currentLockAlbumId;
   if (!albumId) {
-    alert("Album not found");
+    await showCustomAlert("Album not found");
     return;
   }
 
@@ -1241,7 +1164,7 @@ async function showUnlockConfirmModal(albumId) {
 async function processUnlockAlbum() {
   const albumId = window.currentUnlockAlbumId;
   if (!albumId) {
-    alert("Album not found");
+    await showCustomAlert("Album not found");
     return;
   }
 
@@ -1293,7 +1216,7 @@ async function joinDiscussion() {
     "Joining discussion for month:",
     monthKey,
     "User:",
-    currentUser.email
+    currentUser.email,
   );
 
   try {
@@ -1341,7 +1264,7 @@ async function joinDiscussion() {
     });
     await showCustomAlert(
       "Failed to join discussion. Please try again.",
-      "Error"
+      "Error",
     );
   }
 }
@@ -1372,7 +1295,7 @@ async function leaveDiscussion() {
 
     if (!albumsSnapshot.empty) {
       await showCustomAlert(
-        "You must delete your album before leaving the discussion."
+        "You must delete your album before leaving the discussion.",
       );
       return;
     }
@@ -1409,13 +1332,13 @@ async function confirmLeaveDiscussion() {
     await loadAlbums(monthKey);
     await showCustomAlert(
       "You have left the discussion successfully.",
-      "Success"
+      "Success",
     );
   } catch (error) {
     console.error("Error leaving discussion:", error);
     await showCustomAlert(
       "Failed to leave discussion. Please try again.",
-      "Error"
+      "Error",
     );
   }
 }
@@ -1430,7 +1353,7 @@ async function removeParticipant(participantEmail, participantName) {
   const firstName = participantName.split(" ")[0];
   const confirmed = await showCustomConfirm(
     `Are you sure you want to remove ${firstName} from this discussion?`,
-    "Remove Participant"
+    "Remove Participant",
   );
   if (!confirmed) {
     return;
@@ -1454,13 +1377,73 @@ async function removeParticipant(participantEmail, participantName) {
     await loadAlbums(monthKey);
     await showCustomAlert(
       `${firstName} has been removed from the discussion.`,
-      "Success"
+      "Success",
     );
   } catch (error) {
     console.error("Error removing participant:", error);
     await showCustomAlert(
       "Failed to remove participant. Please try again.",
-      "Error"
+      "Error",
+    );
+  }
+}
+
+// Remove all participants (moderator only)
+async function removeAllParticipants() {
+  if (!currentUser || !isModerator(currentUser.email)) {
+    await showCustomAlert("Only moderators can remove all participants.");
+    return;
+  }
+
+  const monthKey = getMonthKey(currentDate);
+  const participants = window.currentParticipants || [];
+
+  if (participants.length === 0) {
+    await showCustomAlert(
+      "There are no participants to remove.",
+      "No Participants",
+    );
+    return;
+  }
+
+  const confirmed = await showCustomConfirm(
+    `Are you sure you want to remove all ${participants.length} participant(s) from this month's discussion? This action cannot be undone.`,
+    "Remove All Participants",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const batch = db.batch();
+    let removedCount = 0;
+
+    for (const participant of participants) {
+      const participantRef = db
+        .collection("participants")
+        .doc(`${monthKey}_${participant.email}`);
+
+      batch.update(participantRef, {
+        left: true,
+        leftAt: firebase.firestore.FieldValue.serverTimestamp(),
+        removedByModerator: true,
+      });
+      removedCount++;
+    }
+
+    await batch.commit();
+
+    await loadParticipants(monthKey);
+    await loadAlbums(monthKey);
+    await showCustomAlert(
+      `Successfully removed ${removedCount} participant(s) from the discussion.`,
+      "Success",
+    );
+  } catch (error) {
+    console.error("Error removing all participants:", error);
+    await showCustomAlert(
+      "Failed to remove participants. Please try again.",
+      "Error",
     );
   }
 }
@@ -1542,6 +1525,58 @@ async function loadParticipants(monthKey) {
   }
 }
 
+// Toggle track rating visibility (per-track, like notes)
+function toggleTrackRatingVisibility() {
+  try {
+    const toggle = document.getElementById("trackRatingVisibilityToggle");
+    const label = document.getElementById("trackRatingVisibilityLabel");
+    if (!toggle || toggle.disabled) return;
+
+    toggle.classList.toggle("private");
+    const isPrivate = toggle.classList.contains("private");
+    toggle.setAttribute("aria-pressed", isPrivate ? "false" : "true");
+
+    if (label) {
+      label.textContent = isPrivate
+        ? "This rating is visible only to you"
+        : "This rating is visible to others";
+      if (isPrivate) {
+        label.classList.remove("visible-others");
+      } else {
+        label.classList.add("visible-others");
+      }
+    }
+  } catch (e) {
+    console.error("Error in toggleTrackRatingVisibility:", e);
+  }
+}
+
+// Toggle album rating visibility (per-album, like notes)
+function toggleAlbumRatingVisibility() {
+  try {
+    const toggle = document.getElementById("albumRatingVisibilityToggle");
+    const label = document.getElementById("albumRatingVisibilityLabel");
+    if (!toggle || toggle.disabled) return;
+
+    toggle.classList.toggle("private");
+    const isPrivate = toggle.classList.contains("private");
+    toggle.setAttribute("aria-pressed", isPrivate ? "false" : "true");
+
+    if (label) {
+      label.textContent = isPrivate
+        ? "This rating is visible only to you"
+        : "This rating is visible to others";
+      if (isPrivate) {
+        label.classList.remove("visible-others");
+      } else {
+        label.classList.add("visible-others");
+      }
+    }
+  } catch (e) {
+    console.error("Error in toggleAlbumRatingVisibility:", e);
+  }
+}
+
 // Update add album button based on whether user has added an album and is a participant
 function updateAddAlbumButton(albums) {
   const addBtn = document.getElementById("addAlbumBtn");
@@ -1579,6 +1614,9 @@ function updateAddAlbumButton(albums) {
     addBtn.style.display = "inline-block";
     addBtn.textContent = "+ Add Your Album";
   }
+
+  // Show Vote Best Album button if there are albums and participants
+  updateVoteBestAlbumButton();
 }
 
 // Delete album from Firebase
@@ -1618,7 +1656,7 @@ async function deleteAlbum(albumId) {
     if (albumData.locked && !userIsModerator) {
       console.warn("Delete blocked: Album is locked");
       await showCustomAlert(
-        "This album is locked. Only a moderator can delete it."
+        "This album is locked. Only a moderator can delete it.",
       );
       return;
     }
@@ -1689,7 +1727,7 @@ async function showAddAlbumModal() {
 
   if (snapshot.empty) {
     await showCustomAlert(
-      "You must join this month's discussion before adding an album!"
+      "You must join this month's discussion before adding an album!",
     );
     return;
   }
@@ -1708,7 +1746,7 @@ async function processAddAlbum() {
   const userLink = input.value.trim();
 
   if (!userLink) {
-    alert("Please enter a YouTube Music link");
+    await showCustomAlert("Please enter a YouTube Music link");
     return;
   }
 
@@ -1716,8 +1754,8 @@ async function processAddAlbum() {
   const playlistIdMatch = userLink.match(/[?&]list=([^&]+)/);
 
   if (!playlistIdMatch) {
-    alert(
-      "Invalid YouTube Music link. Please make sure it contains a playlist ID."
+    await showCustomAlert(
+      "Invalid YouTube Music link. Please make sure it contains a playlist ID.",
     );
     return;
   }
@@ -1742,7 +1780,7 @@ async function processAddAlbum() {
 
     // Fetch the playlist to get title, artist, and cover art
     const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/playlists?part=snippet&id=${playlistId}&key=${YOUTUBE_API_KEY}`,
     );
 
     if (!response.ok) {
@@ -1753,7 +1791,7 @@ async function processAddAlbum() {
 
     if (!data.items || data.items.length === 0) {
       await showCustomAlert(
-        "Could not find album information. Please try again."
+        "Could not find album information. Please try again.",
       );
       return;
     }
@@ -1776,14 +1814,17 @@ async function processAddAlbum() {
     }
 
     // Fetch playlist tracks
-    const tracks = await fetchPlaylistTracks(playlistId);
+    const { tracks, trackArtist } = await fetchPlaylistTracks(playlistId);
 
-    await addAlbum(title, artist, thumbnail, userLink, playlistId, tracks);
+    // Use track artist as fallback if playlist channelTitle is just "YouTube"
+    const finalArtist = sanitizeArtist(artist) ? artist : trackArtist || artist;
+
+    await addAlbum(title, finalArtist, thumbnail, userLink, playlistId, tracks);
   } catch (error) {
     console.error("Error fetching album details:", error);
     await showCustomAlert(
       `Failed to fetch album information: ${error.message}\n\nPlease enter details manually.`,
-      "Error"
+      "Error",
     );
 
     // Fallback to manual entry
@@ -1873,7 +1914,7 @@ async function migrateSanitizeArtists(options = {}) {
   }
 
   console.log(
-    `Albums scanned: ${total}, candidates to update: ${toUpdate.length}`
+    `Albums scanned: ${total}, candidates to update: ${toUpdate.length}`,
   );
 
   if (dryRun)
@@ -1906,6 +1947,82 @@ async function migrateSanitizeArtists(options = {}) {
   return { ok: true, migrated: committed };
 }
 
+// Migration: re-fetch artist names from YouTube API for albums with missing artist
+// Usage (from browser console):
+//   await window.migrateRefetchArtists();
+async function migrateRefetchArtists() {
+  if (!db) {
+    console.error("Firestore `db` not available.");
+    return;
+  }
+  if (
+    !confirm(
+      "Re-fetch artist names using oEmbed (no API key needed) for ALL albums?",
+    )
+  )
+    return;
+
+  const snapshot = await db.collection("albums").get();
+  let updated = 0;
+  let skipped = 0;
+
+  for (const doc of snapshot.docs) {
+    const album = doc.data();
+    const currentArtist = album.artist || "";
+    const sanitized = sanitizeArtist(currentArtist);
+    console.log(
+      `Album: "${album.title}" | raw artist: "${currentArtist}" | sanitized: "${sanitized}"`,
+    );
+
+    // Get a videoId from stored tracks
+    const tracks = album.tracks || [];
+    const videoId = tracks.length > 0 ? tracks[0].videoId : null;
+
+    if (!videoId) {
+      console.log(`  → Skipped (no tracks/videoId)`);
+      skipped++;
+      continue;
+    }
+
+    try {
+      // Use YouTube oEmbed API — no API key or referrer restriction
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`;
+      const resp = await fetch(oembedUrl);
+      if (!resp.ok) {
+        console.log(`  → oEmbed failed (${resp.status})`);
+        skipped++;
+        continue;
+      }
+      const oembedData = await resp.json();
+      const authorName = oembedData.author_name || "";
+      console.log(`  → oEmbed author_name: "${authorName}"`);
+
+      // Clean up: remove "- Topic" suffix
+      let foundArtist = authorName.replace(/\s*[-—–]\s*Topic$/i, "").trim();
+      if (/^YouTube( Music)?$/i.test(foundArtist)) foundArtist = "";
+
+      if (foundArtist && foundArtist !== sanitized) {
+        await db
+          .collection("albums")
+          .doc(doc.id)
+          .update({ artist: foundArtist });
+        console.log(`  → Updated: "${foundArtist}"`);
+        updated++;
+      } else {
+        console.log(`  → No better artist found (got: "${foundArtist}")`);
+        skipped++;
+      }
+    } catch (e) {
+      console.error(`  → Error for "${album.title}":`, e);
+      skipped++;
+    }
+  }
+
+  console.log(`Done. Updated: ${updated}, Skipped: ${skipped}`);
+  alert(`Artist migration complete. Updated: ${updated}, Skipped: ${skipped}`);
+}
+window.migrateRefetchArtists = migrateRefetchArtists;
+
 // Expose to console for manual invocation
 window.migrateSanitizeArtists = migrateSanitizeArtists;
 
@@ -1913,18 +2030,18 @@ window.migrateSanitizeArtists = migrateSanitizeArtists;
 async function fetchPlaylistTracks(playlistId) {
   try {
     const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50&key=${YOUTUBE_API_KEY}`
+      `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${playlistId}&maxResults=50&key=${YOUTUBE_API_KEY}`,
     );
 
     if (!response.ok) {
       console.error("Failed to fetch playlist tracks");
-      return [];
+      return { tracks: [], trackArtist: "" };
     }
 
     const data = await response.json();
 
     if (!data.items || data.items.length === 0) {
-      return [];
+      return { tracks: [], trackArtist: "" };
     }
 
     // Extract track titles from playlist items
@@ -1934,10 +2051,38 @@ async function fetchPlaylistTracks(playlistId) {
       videoId: item.snippet.resourceId.videoId,
     }));
 
-    return tracks;
+    // Extract artist from first track's videoOwnerChannelTitle (fallback for artist)
+    let trackArtist = "";
+    if (data.items.length > 0 && data.items[0].snippet.videoOwnerChannelTitle) {
+      trackArtist = data.items[0].snippet.videoOwnerChannelTitle
+        .replace(/\s*[-—–]\s*Topic$/i, "")
+        .trim();
+      if (/^YouTube( Music)?$/i.test(trackArtist)) trackArtist = "";
+    }
+
+    // If still no artist, try fetching the first video's details as fallback
+    if (!trackArtist && tracks.length > 0 && tracks[0].videoId) {
+      try {
+        const videoResp = await fetch(
+          `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${tracks[0].videoId}&key=${YOUTUBE_API_KEY}`,
+        );
+        if (videoResp.ok) {
+          const videoData = await videoResp.json();
+          if (videoData.items && videoData.items.length > 0) {
+            const channelTitle = videoData.items[0].snippet.channelTitle || "";
+            trackArtist = channelTitle.replace(/\s*[-—–]\s*Topic$/i, "").trim();
+            if (/^YouTube( Music)?$/i.test(trackArtist)) trackArtist = "";
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch video details for artist:", e);
+      }
+    }
+
+    return { tracks, trackArtist };
   } catch (error) {
     console.error("Error fetching playlist tracks:", error);
-    return [];
+    return { tracks: [], trackArtist: "" };
   }
 }
 
@@ -1948,7 +2093,7 @@ async function addAlbum(
   coverUrl,
   youtubeUrl = "",
   playlistId = "",
-  tracks = []
+  tracks = [],
 ) {
   if (!db || !currentUser) {
     await showCustomAlert("Unable to add album. Please try again.");
@@ -2005,7 +2150,7 @@ async function addAlbum(
     console.error("Error details:", error.message, error.code);
     await showCustomAlert(
       `Failed to add album: ${error.message}\n\nPlease check the browser console for details.`,
-      "Error"
+      "Error",
     );
   }
 }
@@ -2045,26 +2190,6 @@ function updateParticipants(participants) {
     return;
   }
 
-  // Get voting information if voting is active
-  let votersSet = new Set();
-  if (window.currentVotingActive) {
-    // Get all albums to check who has voted
-    const albumWrappers = document.querySelectorAll(".album-wrapper");
-    albumWrappers.forEach((wrapper) => {
-      const albumId = wrapper.dataset.albumId;
-      // We'll access this from window.currentAlbums later
-    });
-
-    // Access current albums from global state
-    if (window.currentAlbums) {
-      window.currentAlbums.forEach((album) => {
-        if (album.votes) {
-          Object.keys(album.votes).forEach((email) => votersSet.add(email));
-        }
-      });
-    }
-  }
-
   // Use cached participant colors
   const participantColors = PARTICIPANT_COLORS;
 
@@ -2089,7 +2214,7 @@ function updateParticipants(participants) {
     if (participant.picture) {
       div.classList.add("has-avatar");
 
-      // Container for avatar with potential vote indicator
+      // Container for avatar
       const avatarContainer = document.createElement("div");
       avatarContainer.style.position = "relative";
       avatarContainer.style.display = "inline-block";
@@ -2116,19 +2241,6 @@ function updateParticipants(participants) {
       };
 
       avatarContainer.appendChild(avatar);
-
-      // Add vote indicator if voting is active and user has voted
-      if (window.currentVotingActive && votersSet.has(participant.email)) {
-        const voteIndicator = document.createElement("div");
-        voteIndicator.textContent = "✅";
-        voteIndicator.style.position = "absolute";
-        voteIndicator.style.top = "-5px";
-        voteIndicator.style.right = "-5px";
-        voteIndicator.style.fontSize = "20px";
-        voteIndicator.style.lineHeight = "1";
-        voteIndicator.title = "Has voted";
-        avatarContainer.appendChild(voteIndicator);
-      }
 
       div.appendChild(avatarContainer);
 
@@ -2206,6 +2318,41 @@ function updateAlbums(albums) {
   // Use cached album cover gradients
   const gradients = ALBUM_GRADIENTS;
 
+  // Compute album rankings if voting has ended (all revealed)
+  let albumRankMap = null; // albumId -> rank (1-based)
+  const _participants = window.currentParticipants || [];
+  if (_participants.length >= 2 && sortedAlbums.length >= 2) {
+    const _allVoted = sortedAlbums.every((album) => {
+      const ar = album.albumRatings || {};
+      return _participants.every((p) => ar[p.email] !== undefined);
+    });
+    const _allRevealed =
+      _allVoted &&
+      sortedAlbums.every((album) => {
+        const vm = album.albumRatingsVisible || {};
+        return _participants.every((p) => vm[p.email] === true);
+      });
+    if (_allRevealed) {
+      const ranked = sortedAlbums
+        .map((album) => {
+          const ar = album.albumRatings || {};
+          const scores = _participants
+            .map((p) => ar[p.email])
+            .filter((v) => v !== undefined);
+          const mean =
+            scores.length > 0
+              ? scores.reduce((a, b) => a + b, 0) / scores.length
+              : 0;
+          return { id: album.id, mean };
+        })
+        .sort((a, b) => b.mean - a.mean);
+      albumRankMap = {};
+      ranked.forEach((r, i) => {
+        albumRankMap[r.id] = i + 1;
+      });
+    }
+  }
+
   // Create elements safely to prevent XSS
   sortedAlbums.forEach((album, index) => {
     // Create wrapper for album card + tracks
@@ -2220,7 +2367,7 @@ function updateAlbums(albums) {
 
     // Assign color based on participant
     const participant = document.querySelector(
-      `.participant[data-email="${album.addedBy}"]`
+      `.participant[data-email="${album.addedBy}"]`,
     );
     const colorIndex = participant?.dataset.colorIndex || 0;
     const colors = getParticipantColors();
@@ -2299,7 +2446,7 @@ function updateAlbums(albums) {
             if (src.includes(token)) {
               const nextIndex = Math.min(
                 i + 1 + attempted,
-                fallbackOrder.length - 1
+                fallbackOrder.length - 1,
               );
               const nextToken = fallbackOrder[nextIndex];
               if (nextToken && nextToken !== token) {
@@ -2366,25 +2513,110 @@ function updateAlbums(albums) {
     const info = document.createElement("div");
     info.className = "album-info";
 
-    const title = document.createElement("h3");
-    title.textContent = sanitizeAlbumTitle(album.title);
-
-    info.appendChild(title);
-
     const _artistText = sanitizeArtist(album.artist);
     const rawArtistText = album.artist ? album.artist.trim() : "";
     const rawIsOnlyYouTube2 = /^YouTube( Music)?$/i.test(rawArtistText);
-    if (_artistText) {
-      const artist = document.createElement("p");
-      artist.textContent = _artistText;
-      info.appendChild(artist);
-    } else if (rawArtistText && !rawIsOnlyYouTube2) {
-      // Show raw artist string if sanitization removed it and it's not just 'YouTube'
-      const artistRaw = document.createElement("p");
-      artistRaw.textContent = rawArtistText;
-      artistRaw.style.opacity = "0.72";
-      artistRaw.style.fontSize = "0.85rem";
-      info.appendChild(artistRaw);
+    const artistDisplay =
+      _artistText || (!rawIsOnlyYouTube2 && rawArtistText ? rawArtistText : "");
+
+    const title = document.createElement("h3");
+    const albumTitle = sanitizeAlbumTitle(album.title);
+    title.textContent = artistDisplay
+      ? `${artistDisplay} - ${albumTitle}`
+      : albumTitle;
+
+    info.appendChild(title);
+
+    // Compute album rating entries (used for overlay below)
+    const albumRatings = album.albumRatings || {};
+    const albumRatingsVisMap = album.albumRatingsVisible || {};
+    // For past months, show all ratings (visibility only matters for current month)
+    const now = new Date();
+    const realMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const viewedMonthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+    const isPastMonth = viewedMonthKey < realMonthKey;
+    console.log(
+      `Album "${album.title}" viewed=${viewedMonthKey} real=${realMonthKey} isPast=${isPastMonth} albumRatings=`,
+      albumRatings,
+      "visMap=",
+      albumRatingsVisMap,
+    );
+    const ratingEntries = Object.entries(albumRatings).filter(([email]) => {
+      if (email === currentUser?.email) return true;
+      if (isPastMonth) return true;
+      return albumRatingsVisMap[email] === true;
+    });
+    const ratingValues = ratingEntries.map(([, v]) => v);
+
+    // Individual ratings bar above track list
+    let ratingsOverlay = null;
+    if (ratingEntries.length > 0) {
+      ratingsOverlay = document.createElement("div");
+      ratingsOverlay.className = "album-ratings-overlay";
+
+      // Add rank badge if voting has ended
+      if (albumRankMap && albumRankMap[album.id]) {
+        const rank = albumRankMap[album.id];
+        if (rank <= 3) {
+          const rankBadge = document.createElement("div");
+          rankBadge.className = "album-rank-badge rank-" + rank;
+          if (rank === 1) {
+            rankBadge.textContent = "🏆 #1";
+          } else {
+            rankBadge.textContent = "#" + rank;
+          }
+          ratingsOverlay.appendChild(rankBadge);
+        }
+      }
+      const albumRatingsVisibleMap = album.albumRatingsVisible || {};
+      ratingEntries.forEach(([userEmail, rating]) => {
+        // Skip users who have hidden their album rating (unless it's the current user or past month)
+        if (userEmail !== currentUser?.email && !isPastMonth) {
+          if (albumRatingsVisibleMap[userEmail] !== true) return;
+        }
+
+        const participant = window.currentParticipants?.find(
+          (p) => p.email === userEmail,
+        );
+        const hue = (rating / 10) * 120;
+        const color = `hsl(${hue}, 80%, 55%)`;
+        const item = document.createElement("div");
+        item.className = "album-rating-avatar-item";
+
+        if (participant && participant.picture) {
+          const avatar = document.createElement("img");
+          avatar.className = "album-rating-avatar-img";
+          avatar.src = participant.picture;
+          avatar.alt = participant.name || userEmail;
+          avatar.title = `${participant.name || userEmail}: ${rating}`;
+          avatar.onerror = () => {
+            const emoji = getAnimalEmojiForUser(userEmail);
+            const emojiEl = document.createElement("div");
+            emojiEl.className =
+              "album-rating-avatar-img album-rating-avatar-emoji";
+            emojiEl.textContent = emoji;
+            emojiEl.title = `${participant?.name || userEmail}: ${rating}`;
+            avatar.replaceWith(emojiEl);
+          };
+          item.appendChild(avatar);
+        } else {
+          // Fallback: emoji avatar
+          const emoji = getAnimalEmojiForUser(userEmail);
+          const emojiEl = document.createElement("div");
+          emojiEl.className =
+            "album-rating-avatar-img album-rating-avatar-emoji";
+          emojiEl.textContent = emoji;
+          emojiEl.title = `${participant?.name || userEmail}: ${rating}`;
+          item.appendChild(emojiEl);
+        }
+
+        const num = document.createElement("span");
+        num.className = "album-rating-avatar-num";
+        num.textContent = rating;
+        num.style.color = color;
+        item.appendChild(num);
+        ratingsOverlay.appendChild(item);
+      });
     }
 
     // Check if current user is a moderator
@@ -2516,7 +2748,7 @@ function updateAlbums(albums) {
       } else if (album.playlistId) {
         window.open(
           "https://music.youtube.com/playlist?list=" + album.playlistId,
-          "_blank"
+          "_blank",
         );
       }
     });
@@ -2525,254 +2757,8 @@ function updateAlbums(albums) {
     actionContainer.appendChild(youtubeBtn);
     card.appendChild(actionContainer);
 
-    // Check if voting is active for this month
-    const votingActive = window.currentVotingActive || false;
-
-    // Check if current user has already voted
-    let userHasVoted = false;
-    if (votingActive && currentUser) {
-      // Check if user's email appears in any album's votes
-      const allAlbums = document.querySelectorAll(".album-wrapper");
-      // We'll set this properly in loadAlbums, but for now check album.votes
-      if (album.votes && album.votes[currentUser.email]) {
-        userHasVoted = true;
-      }
-    }
-
-    console.log(
-      "Album:",
-      album.title,
-      "votingActive:",
-      votingActive,
-      "isUserAlbum:",
-      isUserAlbum,
-      "userHasVoted:",
-      userHasVoted,
-      "window.currentVotingActive:",
-      window.currentVotingActive
-    );
-
-    // Hide user's own album during voting if they haven't voted yet
-    if (votingActive && isUserAlbum && !window.userHasVotedThisMonth) {
-      albumWrapper.style.display = "none";
-      return albumWrapper;
-    }
-
-    // Fade out user's own album during voting if they have voted
-    if (votingActive && isUserAlbum && window.userHasVotedThisMonth) {
-      card.style.opacity = "0.3";
-      card.style.filter = "grayscale(50%)";
-      card.style.pointerEvents = "none";
-    } else if (votingActive && isUserAlbum) {
-      card.style.opacity = "0.3";
-      card.style.filter = "grayscale(50%)";
-      card.style.pointerEvents = "none";
-    } else {
-      albumWrapper.style.display = "block";
-      card.style.opacity = "1";
-      card.style.filter = "none";
-      card.style.pointerEvents = "auto";
-    }
-
-    // Show voting circles if voting is active AND it's not the user's album AND user hasn't voted yet
-    if (votingActive && !isUserAlbum && !window.userHasVotedThisMonth) {
-      console.log("Creating vote circles for album:", album.title);
-      const voteCircles = document.createElement("div");
-      voteCircles.className = "album-vote-circles";
-
-      const vote3Circle = document.createElement("div");
-      vote3Circle.className = "album-vote-circle vote-3";
-      vote3Circle.textContent = "3";
-      vote3Circle.dataset.albumId = album.id;
-      vote3Circle.addEventListener("click", (e) => {
-        e.stopPropagation();
-        selectVote(album.id, 3);
-      });
-
-      const vote1Circle = document.createElement("div");
-      vote1Circle.className = "album-vote-circle vote-1";
-      vote1Circle.textContent = "1";
-      vote1Circle.dataset.albumId = album.id;
-      vote1Circle.addEventListener("click", (e) => {
-        e.stopPropagation();
-        selectVote(album.id, 1);
-      });
-
-      voteCircles.appendChild(vote3Circle);
-      voteCircles.appendChild(vote1Circle);
-      albumWrapper.appendChild(voteCircles);
-    }
-
-    // Show vote avatars if voting is active and there are votes
-    if (votingActive && album.votes && Object.keys(album.votes).length > 0) {
-      const voteAvatarsContainer = document.createElement("div");
-      voteAvatarsContainer.style.display = "flex";
-      voteAvatarsContainer.style.gap = "8px";
-      voteAvatarsContainer.style.justifyContent = "center";
-      voteAvatarsContainer.style.marginBottom = "10px";
-      voteAvatarsContainer.style.flexWrap = "wrap";
-
-      Object.entries(album.votes).forEach(([voterEmail, points]) => {
-        const participant = window.currentParticipants?.find(
-          (p) => p.email === voterEmail
-        );
-        if (participant) {
-          // Get participant's color
-          const participantElement = document.querySelector(
-            `.participant[data-email="${voterEmail}"]`
-          );
-          const colorIndex = participantElement?.dataset.colorIndex || 0;
-          const colors = getParticipantColors();
-          const participantColor = colors[colorIndex % colors.length];
-
-          const voteAvatar = document.createElement("div");
-          voteAvatar.style.position = "relative";
-          voteAvatar.style.display = "flex";
-          voteAvatar.style.flexDirection = "column";
-          voteAvatar.style.alignItems = "center";
-
-          // Points emoji above avatar
-          const pointsEmoji = document.createElement("div");
-          pointsEmoji.style.fontSize = "20px";
-          pointsEmoji.style.marginBottom = "4px";
-          pointsEmoji.textContent = points === 3 ? "🥇" : "🥈";
-          voteAvatar.appendChild(pointsEmoji);
-
-          // Avatar
-          const avatar = document.createElement("img");
-          avatar.src = participant.picture;
-          avatar.alt = participant.name;
-          avatar.dataset.voterEmail = voterEmail; // Add email as data attribute
-          avatar.style.width = "32px";
-          avatar.style.height = "32px";
-          avatar.style.borderRadius = "50%";
-          avatar.style.border = `2px solid ${participantColor.border}`;
-          avatar.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
-          avatar.title = `${participant.name}: ${points} points`;
-
-          // Fallback to consistent animal emoji if image fails
-          avatar.onerror = () => {
-            const emoji = getAnimalEmojiForUser(voterEmail);
-            const emojiSpan = document.createElement("div");
-            emojiSpan.textContent = emoji;
-            emojiSpan.dataset.voterEmail = voterEmail; // Add email to emoji fallback too
-            emojiSpan.style.fontSize = "32px";
-            emojiSpan.style.width = "32px";
-            emojiSpan.style.height = "32px";
-            emojiSpan.style.display = "flex";
-            emojiSpan.style.alignItems = "center";
-            emojiSpan.style.justifyContent = "center";
-            emojiSpan.title = `${participant.name}: ${points} points`;
-            avatar.replaceWith(emojiSpan);
-          };
-
-          voteAvatar.appendChild(avatar);
-
-          voteAvatarsContainer.appendChild(voteAvatar);
-        }
-      });
-
-      albumWrapper.appendChild(voteAvatarsContainer);
-    }
-    // Show vote results with avatars if voting is not active and there are votes
-    else if (
-      !votingActive &&
-      album.votes &&
-      Object.keys(album.votes).length > 0
-    ) {
-      const totalVotes = Object.values(album.votes).reduce(
-        (sum, points) => sum + points,
-        0
-      );
-
-      // Total points badge at the top
-      const voteBadge = document.createElement("div");
-      voteBadge.style.textAlign = "center";
-      voteBadge.style.marginBottom = "10px";
-      voteBadge.style.fontSize = "24px";
-      voteBadge.style.fontWeight = "700";
-      voteBadge.style.color = "#ffd700";
-      voteBadge.style.textShadow = "0 2px 4px rgba(0,0,0,0.5)";
-      voteBadge.textContent = `${totalVotes} pts`;
-      albumWrapper.appendChild(voteBadge);
-
-      // Show who voted with avatars
-      const voteAvatarsContainer = document.createElement("div");
-      voteAvatarsContainer.style.display = "flex";
-      voteAvatarsContainer.style.gap = "8px";
-      voteAvatarsContainer.style.justifyContent = "center";
-      voteAvatarsContainer.style.marginBottom = "10px";
-      voteAvatarsContainer.style.flexWrap = "wrap";
-
-      Object.entries(album.votes).forEach(([voterEmail, points]) => {
-        const participant = window.currentParticipants?.find(
-          (p) => p.email === voterEmail
-        );
-        if (participant) {
-          // Get participant's color
-          const participantElement = document.querySelector(
-            `.participant[data-email="${voterEmail}"]`
-          );
-          const colorIndex = participantElement?.dataset.colorIndex || 0;
-          const colors = getParticipantColors();
-          const participantColor = colors[colorIndex % colors.length];
-
-          const voteAvatar = document.createElement("div");
-          voteAvatar.style.position = "relative";
-          voteAvatar.style.display = "flex";
-          voteAvatar.style.flexDirection = "column";
-          voteAvatar.style.alignItems = "center";
-
-          // Points emoji above avatar
-          const pointsEmoji = document.createElement("div");
-          pointsEmoji.style.fontSize = "20px";
-          pointsEmoji.style.marginBottom = "4px";
-          pointsEmoji.textContent = points === 3 ? "🥇" : "🥈";
-          voteAvatar.appendChild(pointsEmoji);
-
-          // Avatar
-          const avatar = document.createElement("img");
-          avatar.src = participant.picture;
-          avatar.alt = participant.name;
-          avatar.dataset.voterEmail = voterEmail; // Add email as data attribute
-          avatar.style.width = "32px";
-          avatar.style.height = "32px";
-          avatar.style.borderRadius = "50%";
-          avatar.style.border = `2px solid ${participantColor.border}`;
-          avatar.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
-          avatar.title = `${participant.name}: ${points} points`;
-
-          // Fallback to consistent animal emoji if image fails
-          avatar.onerror = () => {
-            const emoji = getAnimalEmojiForUser(voterEmail);
-            const emojiSpan = document.createElement("div");
-            emojiSpan.textContent = emoji;
-            emojiSpan.dataset.voterEmail = voterEmail; // Add email to emoji fallback too
-            emojiSpan.style.fontSize = "32px";
-            emojiSpan.style.width = "32px";
-            emojiSpan.style.height = "32px";
-            emojiSpan.style.display = "flex";
-            emojiSpan.style.alignItems = "center";
-            emojiSpan.style.justifyContent = "center";
-            emojiSpan.title = `${participant.name}: ${points} points`;
-            avatar.replaceWith(emojiSpan);
-          };
-
-          voteAvatar.appendChild(avatar);
-
-          voteAvatarsContainer.appendChild(voteAvatar);
-        }
-      });
-
-      albumWrapper.appendChild(voteAvatarsContainer);
-    }
-
-    // Otherwise show external links circles
-    if (
-      album.externalLinks &&
-      album.externalLinks.length > 0 &&
-      !votingActive
-    ) {
+    // Show external links circles
+    if (album.externalLinks && album.externalLinks.length > 0) {
       album.externalLinks.forEach((link, linkIndex) => {
         const linkCircle = document.createElement("a");
         linkCircle.href = link.url;
@@ -2792,7 +2778,7 @@ function updateAlbums(albums) {
     try {
       const notes = album.albumNotes || {};
       const visibleNotes = Object.values(notes).filter(
-        (n) => n && n.visible && n.text && n.text.trim() !== ""
+        (n) => n && n.visible && n.text && n.text.trim() !== "",
       );
       const publicCount = visibleNotes.length;
       if (publicCount > 0) {
@@ -2835,6 +2821,82 @@ function updateAlbums(albums) {
 
     card.appendChild(cover);
     card.appendChild(info);
+
+    // Add individual ratings overlay above the card (positioned absolutely)
+    if (ratingsOverlay) {
+      albumWrapper.appendChild(ratingsOverlay);
+    }
+
+    // Old voting system display (Jan 2026 and earlier used a 3pt/1pt pick system)
+    // Show "X pts" total + vote avatars for months before February 2026
+    if (
+      viewedMonthKey < "2026-02" &&
+      album.votes &&
+      Object.keys(album.votes).length > 0
+    ) {
+      const totalVotes = Object.values(album.votes).reduce(
+        (sum, points) => sum + points,
+        0,
+      );
+
+      // Total points badge
+      const voteBadge = document.createElement("div");
+      voteBadge.className = "old-vote-badge";
+      voteBadge.textContent = `${totalVotes} pts`;
+      albumWrapper.appendChild(voteBadge);
+
+      // Vote avatars with 🥇/🥈 indicators
+      const voteAvatarsContainer = document.createElement("div");
+      voteAvatarsContainer.className = "old-vote-avatars";
+
+      Object.entries(album.votes).forEach(([voterEmail, points]) => {
+        const participant = window.currentParticipants?.find(
+          (p) => p.email === voterEmail,
+        );
+        if (!participant) return;
+
+        // Get participant's color
+        const participantElement = document.querySelector(
+          `.participant[data-email="${voterEmail}"]`,
+        );
+        const colorIndex = participantElement?.dataset.colorIndex || 0;
+        const colors = getParticipantColors();
+        const participantColor = colors[colorIndex % colors.length];
+
+        const voteAvatar = document.createElement("div");
+        voteAvatar.className = "old-vote-avatar";
+
+        // Points emoji above avatar
+        const pointsEmoji = document.createElement("div");
+        pointsEmoji.className = "old-vote-emoji";
+        pointsEmoji.textContent = points === 3 ? "🥇" : "🥈";
+        voteAvatar.appendChild(pointsEmoji);
+
+        // Avatar image
+        const avatar = document.createElement("img");
+        avatar.src = participant.picture;
+        avatar.alt = participant.name;
+        avatar.className = "old-vote-avatar-img";
+        avatar.style.border = `2px solid ${participantColor.border}`;
+        avatar.title = `${participant.name}: ${points} points`;
+
+        // Fallback to consistent animal emoji if image fails
+        avatar.onerror = () => {
+          const emoji = getAnimalEmojiForUser(voterEmail);
+          const emojiSpan = document.createElement("div");
+          emojiSpan.textContent = emoji;
+          emojiSpan.className = "old-vote-avatar-img old-vote-avatar-emoji";
+          emojiSpan.title = `${participant.name}: ${points} points`;
+          avatar.replaceWith(emojiSpan);
+        };
+
+        voteAvatar.appendChild(avatar);
+        voteAvatarsContainer.appendChild(voteAvatar);
+      });
+
+      albumWrapper.appendChild(voteAvatarsContainer);
+    }
+
     albumWrapper.appendChild(card);
 
     // Add track list as separate div below the album card (inside wrapper)
@@ -2862,6 +2924,11 @@ function updateAlbums(albums) {
 
         // Check all users' ratings and notes for this track
         Object.entries(trackRatings).forEach(([userEmail, userRating]) => {
+          // Skip users who have hidden their rating for this track (unless it's the current user or past month)
+          if (userEmail !== currentUser?.email && !isPastMonth) {
+            if (userRating.ratingsVisible?.[trackKey] !== true) return;
+          }
+
           // Detect notes for this user on this track
           try {
             if (
@@ -2877,8 +2944,11 @@ function updateAlbums(albums) {
             // ignore malformed entries
           }
 
+          // Determine what to display: old-style emoji type and/or new numeric rating
           let ratingType = null;
+          let numericRating = null;
 
+          // Check old-style ratings
           if (userRating.favorite === trackKey) {
             ratingType = "favorite";
           } else if (userRating.leastFavorite === trackKey) {
@@ -2892,10 +2962,18 @@ function updateAlbums(albums) {
             ratingType = "disliked";
           }
 
-          if (ratingType) {
+          // Check new numeric rating
+          if (
+            userRating.ratings &&
+            userRating.ratings[trackKey] !== undefined
+          ) {
+            numericRating = userRating.ratings[trackKey];
+          }
+
+          if (ratingType || numericRating !== null) {
             // Find participant to get their picture
             const participant = window.currentParticipants?.find(
-              (p) => p.email === userEmail
+              (p) => p.email === userEmail,
             );
             if (participant) {
               // Determine if this particular user has a visible note for this track
@@ -2911,12 +2989,42 @@ function updateAlbums(albums) {
               } catch (e) {
                 userHasNote = false;
               }
-              addRatingIndicator(
-                ratingsContainer,
-                ratingType,
-                participant,
-                userHasNote
-              );
+              // Show old-style emoji if present
+              if (ratingType) {
+                addRatingIndicator(
+                  ratingsContainer,
+                  ratingType,
+                  participant,
+                  userHasNote,
+                );
+              }
+              // Show numeric rating if present (and no emoji already shown for this user)
+              if (numericRating !== null && !ratingType) {
+                addRatingIndicator(
+                  ratingsContainer,
+                  numericRating,
+                  participant,
+                  userHasNote,
+                );
+              }
+              // If both, show combined: emoji + number
+              if (numericRating !== null && ratingType) {
+                // Already added emoji above; append numeric to same avatar's container
+                const lastChild = ratingsContainer.lastElementChild;
+                if (lastChild) {
+                  const ratingSpan = document.createElement("span");
+                  ratingSpan.className = "track-rating-number";
+                  ratingSpan.textContent = numericRating;
+                  if (numericRating >= 8) {
+                    ratingSpan.style.color = "#22c55e";
+                  } else if (numericRating >= 5) {
+                    ratingSpan.style.color = "#fbbf24";
+                  } else {
+                    ratingSpan.style.color = "#ef4444";
+                  }
+                  lastChild.appendChild(ratingSpan);
+                }
+              }
             }
           }
         });
@@ -2930,18 +3038,23 @@ function updateAlbums(albums) {
             const myRating = trackRatings[currentUser.email];
             let iRated = false;
             if (myRating) {
-              const myKey = trackKey;
               if (
-                myRating.favorite === myKey ||
-                myRating.leastFavorite === myKey ||
-                (myRating.liked && myRating.liked.includes(myKey)) ||
-                (myRating.disliked && myRating.disliked.includes(myKey))
+                myRating.ratings &&
+                myRating.ratings[trackKey] !== undefined
+              ) {
+                iRated = true;
+              }
+              if (
+                myRating.favorite === trackKey ||
+                myRating.leastFavorite === trackKey ||
+                (myRating.liked && myRating.liked.includes(trackKey)) ||
+                (myRating.disliked && myRating.disliked.includes(trackKey))
               ) {
                 iRated = true;
               }
             }
 
-            // Check if current user's note is These notes are visible only to you
+            // Check if current user's note is visible
             let myHasVisibleNote = false;
             if (
               myRating &&
@@ -2957,7 +3070,7 @@ function updateAlbums(albums) {
             if (myHasVisibleNote && !iRated) {
               // find participant info for current user
               const me = window.currentParticipants?.find(
-                (p) => p.email === currentUser.email
+                (p) => p.email === currentUser.email,
               );
               if (me) {
                 addRatingIndicator(ratingsContainer, null, me, true);
@@ -2992,7 +3105,7 @@ function updateAlbums(albums) {
 // Highlight participant when hovering over their album
 function highlightParticipant(email) {
   const participant = document.querySelector(
-    `.participant[data-email="${email}"]`
+    `.participant[data-email="${email}"]`,
   );
   if (participant) {
     participant.classList.add("highlighted");
@@ -3172,7 +3285,7 @@ function equalizeAlbumTitleHeights() {
 // Remove highlight from participant
 function unhighlightParticipant(email) {
   const participant = document.querySelector(
-    `.participant[data-email="${email}"]`
+    `.participant[data-email="${email}"]`,
   );
   if (participant) {
     participant.classList.remove("highlighted");
@@ -3196,8 +3309,13 @@ function getParticipantColors() {
   return PARTICIPANT_COLORS;
 }
 
-// Add rating indicator to track item
-function addRatingIndicator(container, type, participant, hasNote = false) {
+// Add rating indicator to track item (supports both emoji type and numeric rating)
+function addRatingIndicator(
+  container,
+  typeOrRating,
+  participant,
+  hasNote = false,
+) {
   const ratingDiv = document.createElement("div");
   ratingDiv.className = "track-rating";
 
@@ -3206,13 +3324,20 @@ function addRatingIndicator(container, type, participant, hasNote = false) {
     ratingDiv.dataset.userEmail = participant.email;
   }
 
+  // Determine if this is a string type (old-style) or number (new-style)
+  const isOldStyle = typeof typeOrRating === "string";
+  const titleSuffix =
+    typeOrRating !== null && typeOrRating !== undefined
+      ? typeOrRating
+      : "No rating";
+
   // Add user avatar
   if (participant && participant.picture) {
     const avatar = document.createElement("img");
     avatar.className = "track-rating-avatar";
     avatar.src = participant.picture;
     avatar.alt = `${participant.name}'s rating`;
-    avatar.title = participant.name;
+    avatar.title = `${participant.name}: ${titleSuffix}`;
 
     // Fallback to consistent animal emoji if image fails
     avatar.onerror = () => {
@@ -3227,7 +3352,7 @@ function addRatingIndicator(container, type, participant, hasNote = false) {
       emojiSpan.style.width = "24px";
       emojiSpan.style.height = "24px";
       emojiSpan.style.borderRadius = "50%";
-      emojiSpan.title = participant.name;
+      emojiSpan.title = `${participant.name}: ${titleSuffix}`;
       avatar.replaceWith(emojiSpan);
     };
 
@@ -3243,26 +3368,42 @@ function addRatingIndicator(container, type, participant, hasNote = false) {
     ratingDiv.appendChild(noteOverlay);
   }
 
-  // Add emoji based on rating type (only if a type is provided)
-  if (type) {
+  // Add emoji based on old-style rating type
+  if (isOldStyle && typeOrRating) {
     const emoji = document.createElement("span");
     emoji.className = "track-rating-emoji";
 
-    if (type === "favorite") {
+    if (typeOrRating === "favorite") {
       emoji.textContent = "⭐";
       emoji.style.color = "#fbbf24";
-    } else if (type === "least") {
+    } else if (typeOrRating === "least") {
       emoji.textContent = "💔";
       emoji.style.color = "#ef4444";
-    } else if (type === "liked") {
+    } else if (typeOrRating === "liked") {
       emoji.textContent = "👍";
       emoji.style.color = "#22c55e";
-    } else if (type === "disliked") {
+    } else if (typeOrRating === "disliked") {
       emoji.textContent = "👎";
       emoji.style.color = "#ef4444";
     }
 
     ratingDiv.appendChild(emoji);
+  }
+
+  // Add numeric rating if it's a number
+  if (!isOldStyle && typeOrRating !== null && typeOrRating !== undefined) {
+    const ratingSpan = document.createElement("span");
+    ratingSpan.className = "track-rating-number";
+    ratingSpan.textContent = typeOrRating;
+    // Color based on rating value
+    if (typeOrRating >= 8) {
+      ratingSpan.style.color = "#22c55e"; // Green for high ratings
+    } else if (typeOrRating >= 5) {
+      ratingSpan.style.color = "#fbbf24"; // Yellow for mid ratings
+    } else {
+      ratingSpan.style.color = "#ef4444"; // Red for low ratings
+    }
+    ratingDiv.appendChild(ratingSpan);
   }
   container.appendChild(ratingDiv);
 }
@@ -3270,6 +3411,153 @@ function addRatingIndicator(container, type, participant, hasNote = false) {
 // Store current rating context
 let currentRatingContext = null;
 let trackPlayer = null;
+
+// Attach input listener to a rating slider
+function attachSliderListeners(sliderId, changeHandler) {
+  const slider = document.getElementById(sliderId);
+  if (!slider) return;
+  // Use 'input' for real-time feedback, 'change' for final value (saves on release)
+  slider.addEventListener("input", () => {
+    const value = parseFloat(slider.value);
+    const container = slider.closest(".rating-slider-container");
+    const display = container?.querySelector(".rating-slider-value");
+    updateSliderDisplay(display, value);
+    container?.classList.remove("no-value");
+  });
+  slider.addEventListener("change", () => {
+    const value = parseFloat(slider.value);
+    changeHandler(value);
+  });
+}
+
+// Get a color for a rating value: 0=red, 5=yellow, 10=green (HSL hue 0→60→120)
+function getRatingColor(value) {
+  const hue = (value / 10) * 120; // 0=red(0), 5=yellow(60), 10=green(120)
+  return `hsl(${hue}, 80%, 55%)`;
+}
+
+// Helper: update slider value display with color
+function updateSliderDisplay(display, value) {
+  if (!display) return;
+  const color = getRatingColor(value);
+  display.textContent = value;
+  display.style.color = color;
+}
+
+// Set a value on a rating slider
+function selectRatingGridValue(gridId, displayId, value) {
+  const container = document.getElementById(gridId);
+  if (!container) return;
+  const slider = container.querySelector(".rating-slider");
+  const display = container.querySelector(".rating-slider-value");
+  if (slider) {
+    slider.value = value;
+  }
+  container.classList.remove("no-value");
+  updateSliderDisplay(display, value);
+}
+
+// Clear selection on a rating slider
+function clearRatingGridSelection(gridId, displayId) {
+  const container = document.getElementById(gridId);
+  if (!container) return;
+  const slider = container.querySelector(".rating-slider");
+  const display = container.querySelector(".rating-slider-value");
+  if (slider) {
+    slider.value = 5;
+  }
+  container.classList.add("no-value");
+  if (display) {
+    display.textContent = "—";
+    display.style.color = "";
+  }
+}
+
+// Handle track rating button click — auto-saves
+async function handleTrackRatingClick(value) {
+  selectRatingGridValue("trackRatingGrid", "trackRatingValue", value);
+  await saveTrackRating(value);
+}
+
+// Handle album rating button click — auto-saves
+async function handleAlbumRatingClick(value) {
+  selectRatingGridValue("albumRatingGrid", "albumRatingValue", value);
+  await saveAlbumRating(value);
+}
+
+// Display other users' track ratings
+function displayTrackRatings(allTrackRatings, trackKey) {
+  const container = document.getElementById("trackRatingsDisplay");
+  if (!container) return;
+  container.innerHTML = "";
+
+  // Collect ratings for this track
+  const ratingsForTrack = [];
+  Object.entries(allTrackRatings).forEach(([userEmail, userRating]) => {
+    if (userRating.ratings && userRating.ratings[trackKey] !== undefined) {
+      // Skip users who have hidden their rating for this track (unless it's the current user)
+      if (userEmail !== currentUser?.email) {
+        // For past months, show all ratings
+        const _now = new Date();
+        const _realMK = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}`;
+        const _viewedMK = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+        const _isPast = _viewedMK < _realMK;
+        if (!_isPast && userRating.ratingsVisible?.[trackKey] !== true) return;
+      }
+
+      const participant = window.currentParticipants?.find(
+        (p) => p.email === userEmail,
+      );
+      if (participant) {
+        ratingsForTrack.push({
+          email: userEmail,
+          name: participant.name.split(" ")[0],
+          picture: participant.picture,
+          rating: userRating.ratings[trackKey],
+        });
+      }
+    }
+  });
+
+  if (ratingsForTrack.length === 0) return;
+
+  const title = document.createElement("div");
+  title.className = "ratings-display-title";
+  title.textContent = "Other Ratings";
+  container.appendChild(title);
+
+  const ratingsGrid = document.createElement("div");
+  ratingsGrid.className = "ratings-grid";
+
+  ratingsForTrack.forEach(({ email, name, picture, rating }) => {
+    if (email === currentUser?.email) return; // Skip current user
+
+    const ratingItem = document.createElement("div");
+    ratingItem.className = "rating-item";
+
+    const avatar = document.createElement("img");
+    avatar.src = picture;
+    avatar.alt = name;
+    avatar.className = "rating-avatar";
+    avatar.onerror = () => {
+      const emoji = getAnimalEmojiForUser(email);
+      const emojiSpan = document.createElement("span");
+      emojiSpan.textContent = emoji;
+      emojiSpan.className = "rating-avatar-emoji";
+      avatar.replaceWith(emojiSpan);
+    };
+
+    const ratingValue = document.createElement("span");
+    ratingValue.className = "rating-value";
+    ratingValue.textContent = rating;
+
+    ratingItem.appendChild(avatar);
+    ratingItem.appendChild(ratingValue);
+    ratingsGrid.appendChild(ratingItem);
+  });
+
+  container.appendChild(ratingsGrid);
+}
 
 // Show rate track modal
 async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
@@ -3310,7 +3598,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     // ignore
   }
 
-  // Clear existing avatars from buttons
+  // Clear existing avatars from old-style buttons
   document
     .querySelectorAll(".rating-btn .rating-avatars")
     .forEach((el) => el.remove());
@@ -3319,16 +3607,24 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   const trackKey = `${track.position}-${track.title}`;
   const notesTextarea = document.getElementById("trackNotesTextarea");
   const visibilityToggle = document.getElementById("notesVisibilityToggle");
+  const clearBtn = document.getElementById("clearTrackRating");
 
-  // Disable rating and notes if user is not a participant
+  // Old-style rating button IDs
   const ratingButtonIds = [
     "rateFavorite",
     "rateLeast",
     "rateLiked",
     "rateDisliked",
   ];
+
+  // Disable rating and notes if user is not a participant
   if (!isParticipant) {
-    // Disable buttons
+    // Disable rating slider
+    const trackSlider = document.getElementById("trackRatingSlider");
+    if (trackSlider) trackSlider.disabled = true;
+    if (clearBtn) clearBtn.disabled = true;
+
+    // Disable old-style buttons
     ratingButtonIds.forEach((id) => {
       const b = document.getElementById(id);
       if (b) {
@@ -3347,8 +3643,20 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
       visibilityToggle.disabled = true;
       visibilityToggle.setAttribute("aria-disabled", "true");
     }
+    const trackRatVisToggle = document.getElementById(
+      "trackRatingVisibilityToggle",
+    );
+    if (trackRatVisToggle) {
+      trackRatVisToggle.disabled = true;
+      trackRatVisToggle.setAttribute("aria-disabled", "true");
+    }
   } else {
     // Ensure enabled
+    const trackSlider2 = document.getElementById("trackRatingSlider");
+    if (trackSlider2) trackSlider2.disabled = false;
+    if (clearBtn) clearBtn.disabled = false;
+
+    // Enable old-style buttons
     ratingButtonIds.forEach((id) => {
       const b = document.getElementById(id);
       if (b) {
@@ -3357,10 +3665,62 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
         b.title = "";
       }
     });
+
     if (notesTextarea) notesTextarea.disabled = false;
     if (visibilityToggle) {
       visibilityToggle.disabled = false;
       visibilityToggle.removeAttribute("aria-disabled");
+    }
+    const trackRatVisToggle2 = document.getElementById(
+      "trackRatingVisibilityToggle",
+    );
+    if (trackRatVisToggle2) {
+      trackRatVisToggle2.disabled = false;
+      trackRatVisToggle2.removeAttribute("aria-disabled");
+    }
+  }
+
+  // Load user's current numeric rating for this track
+  const userRating = allTrackRatings[currentUser.email];
+  const currentTrackRating = userRating?.ratings?.[trackKey];
+
+  if (currentTrackRating !== undefined) {
+    selectRatingGridValue(
+      "trackRatingGrid",
+      "trackRatingValue",
+      currentTrackRating,
+    );
+  } else {
+    clearRatingGridSelection("trackRatingGrid", "trackRatingValue");
+  }
+
+  // Load track rating visibility state
+  const trackRatingVisToggle = document.getElementById(
+    "trackRatingVisibilityToggle",
+  );
+  const trackRatingVisLabel = document.getElementById(
+    "trackRatingVisibilityLabel",
+  );
+  if (trackRatingVisToggle) {
+    const isRatingVisible = userRating?.ratingsVisible?.[trackKey] === true;
+    if (isRatingVisible) {
+      trackRatingVisToggle.classList.remove("private");
+    } else {
+      trackRatingVisToggle.classList.add("private");
+    }
+    trackRatingVisToggle.setAttribute(
+      "aria-pressed",
+      isRatingVisible ? "true" : "false",
+    );
+    if (trackRatingVisLabel) {
+      trackRatingVisLabel.textContent = isRatingVisible
+        ? "This rating is visible to others"
+        : "This rating is visible only to you";
+      if (isRatingVisible) {
+        trackRatingVisLabel.classList.add("visible-others");
+      } else {
+        trackRatingVisLabel.classList.remove("visible-others");
+      }
     }
   }
 
@@ -3408,23 +3768,10 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   // Display other users' visible notes (pass per-track notes map)
   displayOtherUsersNotes(trackNotesForThisTrack);
 
-  // Convert full trackRatings to track-specific format for avatar display
-  // trackKey already declared above
-  const trackSpecificRatings = {};
+  // Display other users' ratings for this track
+  displayTrackRatings(allTrackRatings, trackKey);
 
-  Object.entries(allTrackRatings).forEach(([userEmail, userRating]) => {
-    if (userRating.favorite === trackKey) {
-      trackSpecificRatings[userEmail] = "favorite";
-    } else if (userRating.leastFavorite === trackKey) {
-      trackSpecificRatings[userEmail] = "least";
-    } else if (userRating.liked && userRating.liked.includes(trackKey)) {
-      trackSpecificRatings[userEmail] = "liked";
-    } else if (userRating.disliked && userRating.disliked.includes(trackKey)) {
-      trackSpecificRatings[userEmail] = "disliked";
-    }
-  });
-
-  // Render avatars using helper so UI can be refreshed dynamically
+  // Render avatars on old-style buttons
   renderRatingAvatars(track, allTrackRatings);
 
   modal.classList.remove("hidden");
@@ -3435,66 +3782,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   }
 }
 
-// Display other users' visible notes
-function displayOtherUsersNotes(allTrackNotes) {
-  const container = document.getElementById("otherUsersNotes");
-  container.innerHTML = "";
-
-  const visibleNotes = Object.entries(allTrackNotes).filter(
-    ([email, note]) => note.visible && email !== currentUser.email && note.text
-  );
-
-  if (visibleNotes.length === 0) {
-    return;
-  }
-
-  const title = document.createElement("div");
-  title.className = "other-users-notes-title";
-  title.textContent = "Participants Notes";
-  container.appendChild(title);
-
-  visibleNotes.forEach(([email, note]) => {
-    const participant = window.currentParticipants?.find(
-      (p) => p.email === email
-    );
-    if (!participant) return;
-
-    const card = document.createElement("div");
-    card.className = "user-note-card";
-
-    const header = document.createElement("div");
-    header.className = "user-note-header";
-
-    const avatar = document.createElement("img");
-    avatar.className = "user-note-avatar";
-    avatar.src = participant.picture;
-    avatar.alt = participant.name;
-    avatar.onerror = () => {
-      const emoji = getAnimalEmojiForUser(email);
-      const emojiSpan = document.createElement("div");
-      emojiSpan.textContent = emoji;
-      emojiSpan.style.fontSize = "20px";
-      avatar.replaceWith(emojiSpan);
-    };
-
-    const name = document.createElement("div");
-    name.className = "user-note-name";
-    name.textContent = participant.name.split(" ")[0];
-
-    header.appendChild(avatar);
-    header.appendChild(name);
-
-    const text = document.createElement("div");
-    text.className = "user-note-text";
-    text.textContent = note.text;
-
-    card.appendChild(header);
-    card.appendChild(text);
-    container.appendChild(card);
-  });
-}
-
-// Render rating avatars for a given track and ratings map
+// Render rating avatars on old-style buttons for a given track
 function renderRatingAvatars(track, allTrackRatings = {}) {
   // Clear existing avatars
   document
@@ -3544,7 +3832,7 @@ function renderRatingAvatars(track, allTrackRatings = {}) {
 
       usersWithRating.forEach((email) => {
         const participant = window.currentParticipants?.find(
-          (p) => p.email === email
+          (p) => p.email === email,
         );
         if (participant) {
           const avatar = document.createElement("img");
@@ -3579,6 +3867,65 @@ function renderRatingAvatars(track, allTrackRatings = {}) {
   });
 }
 
+// Display other users' visible notes
+function displayOtherUsersNotes(allTrackNotes) {
+  const container = document.getElementById("otherUsersNotes");
+  container.innerHTML = "";
+
+  const visibleNotes = Object.entries(allTrackNotes).filter(
+    ([email, note]) => note.visible && email !== currentUser.email && note.text,
+  );
+
+  if (visibleNotes.length === 0) {
+    return;
+  }
+
+  const title = document.createElement("div");
+  title.className = "other-users-notes-title";
+  title.textContent = "Participants Notes";
+  container.appendChild(title);
+
+  visibleNotes.forEach(([email, note]) => {
+    const participant = window.currentParticipants?.find(
+      (p) => p.email === email,
+    );
+    if (!participant) return;
+
+    const card = document.createElement("div");
+    card.className = "user-note-card";
+
+    const header = document.createElement("div");
+    header.className = "user-note-header";
+
+    const avatar = document.createElement("img");
+    avatar.className = "user-note-avatar";
+    avatar.src = participant.picture;
+    avatar.alt = participant.name;
+    avatar.onerror = () => {
+      const emoji = getAnimalEmojiForUser(email);
+      const emojiSpan = document.createElement("div");
+      emojiSpan.textContent = emoji;
+      emojiSpan.style.fontSize = "20px";
+      avatar.replaceWith(emojiSpan);
+    };
+
+    const name = document.createElement("div");
+    name.className = "user-note-name";
+    name.textContent = participant.name.split(" ")[0];
+
+    header.appendChild(avatar);
+    header.appendChild(name);
+
+    const text = document.createElement("div");
+    text.className = "user-note-text";
+    text.textContent = note.text;
+
+    card.appendChild(header);
+    card.appendChild(text);
+    container.appendChild(card);
+  });
+}
+
 // Toggle notes visibility
 function toggleNotesVisibility() {
   try {
@@ -3591,7 +3938,7 @@ function toggleNotesVisibility() {
 
     if (toggle.disabled) {
       console.log(
-        "toggleNotesVisibility: toggle is disabled for non-participants"
+        "toggleNotesVisibility: toggle is disabled for non-participants",
       );
       return;
     }
@@ -3635,7 +3982,7 @@ async function saveTrackNotes(options = {}) {
     if (!silent) {
       await showCustomAlert(
         "Join the discussion to add notes.",
-        "Join to Participate"
+        "Join to Participate",
       );
     }
     return;
@@ -3668,7 +4015,7 @@ async function saveTrackNotes(options = {}) {
       "Adding/updating note for user:",
       currentUser.email,
       "on track",
-      trackKey
+      trackKey,
     );
   } else {
     // Remove note if text is empty
@@ -3677,7 +4024,7 @@ async function saveTrackNotes(options = {}) {
       "Removing note for user:",
       currentUser.email,
       "on track",
-      trackKey
+      trackKey,
     );
   }
 
@@ -3714,7 +4061,7 @@ async function saveTrackNotes(options = {}) {
     // Update the album in window.currentAlbums so the data stays fresh
     if (window.currentAlbums) {
       const albumIndex = window.currentAlbums.findIndex(
-        (a) => a.id === albumId
+        (a) => a.id === albumId,
       );
       if (albumIndex !== -1) {
         window.currentAlbums[albumIndex].trackRatings = updatedAllRatings;
@@ -3823,16 +4170,20 @@ async function closeRateTrackModal() {
   }
 }
 
-// Show album note modal for whole-album notes
+// Store album note context for rating
+let currentAlbumNoteContext = null;
+
+// Show album note modal for whole-album notes and ratings
 async function showAlbumNoteModal(albumId) {
   if (!currentUser) {
-    await showCustomAlert("You must be signed in to add album notes.");
+    await showCustomAlert("You must be signed in to rate albums.");
     return;
   }
 
   if (!db) return;
 
   window.currentAlbumNoteId = albumId;
+  currentAlbumNoteContext = { albumId };
 
   try {
     const doc = await db.collection("albums").doc(albumId).get();
@@ -3855,21 +4206,76 @@ async function showAlbumNoteModal(albumId) {
       } else if (rawArtistTitle && !rawIsOnlyYouTube3) {
         // fall back to raw artist only if it's not just YouTube
         titleEl.textContent = `${sanitizeAlbumTitle(
-          album.title
+          album.title,
         )} — ${rawArtistTitle}`;
       } else {
         titleEl.textContent = sanitizeAlbumTitle(album.title);
       }
     }
     if (infoEl)
-      infoEl.textContent = album.description || "Add notes about this album";
+      infoEl.textContent = album.description || "Rate this album and add notes";
+
+    // Load album ratings
+    const albumRatings = album.albumRatings || {};
+    const myAlbumRating = albumRatings[currentUser.email];
+
+    const clearAlbumRatingBtn = document.getElementById("clearAlbumRating");
+
+    // Check if user is a participant
+    const isParticipant =
+      window.currentParticipants &&
+      window.currentParticipants.some((p) => p.email === currentUser.email);
+
+    if (myAlbumRating !== undefined) {
+      selectRatingGridValue(
+        "albumRatingGrid",
+        "albumRatingValue",
+        myAlbumRating,
+      );
+    } else {
+      clearRatingGridSelection("albumRatingGrid", "albumRatingValue");
+    }
+
+    // Load album rating visibility state
+    const albumRatingsVisible = album.albumRatingsVisible || {};
+    const albumRatingVisToggle = document.getElementById(
+      "albumRatingVisibilityToggle",
+    );
+    const albumRatingVisLabel = document.getElementById(
+      "albumRatingVisibilityLabel",
+    );
+    if (albumRatingVisToggle) {
+      const isRatingVisible = albumRatingsVisible[currentUser.email] === true;
+      if (isRatingVisible) {
+        albumRatingVisToggle.classList.remove("private");
+      } else {
+        albumRatingVisToggle.classList.add("private");
+      }
+      albumRatingVisToggle.setAttribute(
+        "aria-pressed",
+        isRatingVisible ? "true" : "false",
+      );
+      if (albumRatingVisLabel) {
+        albumRatingVisLabel.textContent = isRatingVisible
+          ? "This rating is visible to others"
+          : "This rating is visible only to you";
+        if (isRatingVisible) {
+          albumRatingVisLabel.classList.add("visible-others");
+        } else {
+          albumRatingVisLabel.classList.remove("visible-others");
+        }
+      }
+    }
+
+    // Display other users' album ratings
+    displayAlbumRatings(albumRatings, albumRatingsVisible);
 
     const notesMap = album.albumNotes || {};
     const myNote = notesMap[currentUser.email];
 
     const textarea = document.getElementById("albumNoteTextarea");
     const visibilityToggle = document.getElementById(
-      "albumNotesVisibilityToggle"
+      "albumNotesVisibilityToggle",
     );
 
     if (textarea) textarea.value = (myNote && myNote.text) || "";
@@ -3900,12 +4306,12 @@ async function showAlbumNoteModal(albumId) {
     // Display other users' visible album notes
     displayOtherUsersAlbumNotes(notesMap);
 
-    // Disable input for non-participants similarly to track modal
-    const isParticipant =
-      window.currentParticipants &&
-      window.currentParticipants.some((p) => p.email === currentUser.email);
-
     if (!isParticipant) {
+      // Disable rating controls
+      const albSlider = document.getElementById("albumRatingSlider");
+      if (albSlider) albSlider.disabled = true;
+      if (clearAlbumRatingBtn) clearAlbumRatingBtn.disabled = true;
+
       if (textarea) {
         textarea.disabled = true;
         textarea.placeholder = "Join the discussion to add album notes";
@@ -3914,19 +4320,123 @@ async function showAlbumNoteModal(albumId) {
         visibilityToggle.disabled = true;
         visibilityToggle.setAttribute("aria-disabled", "true");
       }
+      const albRatVisToggle = document.getElementById(
+        "albumRatingVisibilityToggle",
+      );
+      if (albRatVisToggle) {
+        albRatVisToggle.disabled = true;
+        albRatVisToggle.setAttribute("aria-disabled", "true");
+      }
     } else {
+      // Enable rating controls
+      const albSlider2 = document.getElementById("albumRatingSlider");
+      if (albSlider2) albSlider2.disabled = false;
+      if (clearAlbumRatingBtn) clearAlbumRatingBtn.disabled = false;
+
       if (textarea) textarea.disabled = false;
       if (visibilityToggle) {
         visibilityToggle.disabled = false;
         visibilityToggle.removeAttribute("aria-disabled");
       }
+      const albRatVisToggle2 = document.getElementById(
+        "albumRatingVisibilityToggle",
+      );
+      if (albRatVisToggle2) {
+        albRatVisToggle2.disabled = false;
+        albRatVisToggle2.removeAttribute("aria-disabled");
+      }
     }
+
+    // Compute and show Bayesian average suggestion
+    updateBayesianSuggestion(albumId);
 
     document.getElementById("albumNoteModal").classList.remove("hidden");
   } catch (error) {
     console.error("Error opening album note modal:", error);
     await showCustomAlert("Failed to open album notes: " + error.message);
   }
+}
+
+// Compute Bayesian average of a user's track ratings for an album
+// Formula: B = (C * m + Σxi) / (C + n)
+//   n  = number of tracks the user rated on this album
+//   Σxi = sum of those ratings
+//   C  = mean track count across all albums this month  (prior weight)
+//   m  = user's overall mean track rating across all albums (prior mean)
+function updateBayesianSuggestion(albumId) {
+  const el = document.getElementById("bayesianSuggestion");
+  if (!el) return;
+  el.classList.add("hidden");
+  const sectionEl = document.getElementById("suggestedScoreSection");
+  if (sectionEl) sectionEl.classList.add("hidden");
+
+  if (
+    !currentUser ||
+    !window.currentAlbums ||
+    window.currentAlbums.length === 0
+  )
+    return;
+
+  const userEmail = currentUser.email;
+  const albums = window.currentAlbums;
+
+  // Collect the user's track ratings for the target album
+  const album = albums.find((a) => a.id === albumId);
+  if (!album) return;
+  const trackRatings = album.trackRatings || {};
+  const userRating = trackRatings[userEmail];
+  const userRatingsMap = (userRating && userRating.ratings) || {};
+  const albumRatingValues = Object.values(userRatingsMap);
+  const n = albumRatingValues.length;
+  const sumXi = albumRatingValues.reduce((a, b) => a + b, 0);
+
+  // C = mean track count across all albums this month
+  const trackCounts = albums.map((a) => (a.tracks ? a.tracks.length : 0));
+  const C = trackCounts.reduce((a, b) => a + b, 0) / trackCounts.length;
+
+  // m = user's overall mean track rating across ALL albums this month
+  let allUserRatings = [];
+  albums.forEach((a) => {
+    const tr = a.trackRatings || {};
+    const ur = tr[userEmail];
+    if (ur && ur.ratings) {
+      allUserRatings = allUserRatings.concat(Object.values(ur.ratings));
+    }
+  });
+
+  if (allUserRatings.length === 0 || n === 0) {
+    // Not enough data to suggest
+    return;
+  }
+
+  const m = allUserRatings.reduce((a, b) => a + b, 0) / allUserRatings.length;
+
+  // Bayesian average
+  const bayesian = (C * m + sumXi) / (C + n);
+  const bayesianRounded = Math.round(bayesian * 2) / 2;
+
+  // Mean of this album's track ratings
+  const mean = sumXi / n;
+  const meanRounded = Math.round(mean * 2) / 2;
+
+  // Median of this album's track ratings
+  const sorted = [...albumRatingValues].sort((a, b) => a - b);
+  let median;
+  if (sorted.length % 2 === 0) {
+    median = (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+  } else {
+    median = sorted[Math.floor(sorted.length / 2)];
+  }
+  const medianRounded = Math.round(median * 2) / 2;
+
+  el.innerHTML = `
+    <div class="bayesian-row"><span class="bayesian-label">Bayesian avg</span> <span class="bayesian-value">${bayesianRounded.toFixed(1)}</span> <span class="bayesian-detail">(${n} track${n !== 1 ? "s" : ""} · prior ${m.toFixed(1)} × ${C.toFixed(1)} weight)</span></div>
+    <div class="bayesian-row"><span class="bayesian-label">Average</span> <span class="bayesian-value">${meanRounded.toFixed(1)}</span></div>
+    <div class="bayesian-row"><span class="bayesian-label">Median</span> <span class="bayesian-value">${medianRounded.toFixed(1)}</span></div>
+  `;
+  el.classList.remove("hidden");
+  const section = document.getElementById("suggestedScoreSection");
+  if (section) section.classList.remove("hidden");
 }
 
 // Display other users' album-level notes
@@ -3937,7 +4447,7 @@ function displayOtherUsersAlbumNotes(notesMap = {}) {
 
   const visibleNotes = Object.entries(notesMap).filter(
     ([email, note]) =>
-      note && note.visible && email !== currentUser.email && note.text
+      note && note.visible && email !== currentUser.email && note.text,
   );
 
   if (visibleNotes.length === 0) return;
@@ -3949,7 +4459,7 @@ function displayOtherUsersAlbumNotes(notesMap = {}) {
 
   visibleNotes.forEach(([email, note]) => {
     const participant = window.currentParticipants?.find(
-      (p) => p.email === email
+      (p) => p.email === email,
     );
     if (!participant) return;
 
@@ -4005,7 +4515,7 @@ function showAlbumNotePreview(album, anchorEl) {
   if (!album) return;
   const notes = album.albumNotes || {};
   const visibleEntries = Object.entries(notes).filter(
-    ([email, n]) => n && n.visible && n.text && n.text.trim() !== ""
+    ([email, n]) => n && n.visible && n.text && n.text.trim() !== "",
   );
   if (visibleEntries.length === 0) return;
 
@@ -4023,7 +4533,7 @@ function showAlbumNotePreview(album, anchorEl) {
   // show first two notes
   visibleEntries.slice(0, 2).forEach(([email, note]) => {
     const participant = window.currentParticipants?.find(
-      (p) => p.email === email
+      (p) => p.email === email,
     );
     const name = participant
       ? participant.name.split(" ")[0]
@@ -4062,7 +4572,7 @@ function showAlbumNotePreview(album, anchorEl) {
   preview.style.left =
     Math.min(
       Math.max(8, rect.left + rect.width / 2 - 140),
-      window.innerWidth - 16 - 280
+      window.innerWidth - 16 - 280,
     ) + "px";
   preview.style.top = Math.max(8, rect.top - preview.offsetHeight - 12) + "px";
 
@@ -4124,7 +4634,7 @@ async function saveAlbumNotes(options = {}) {
   const albumId = window.currentAlbumNoteId;
   const textarea = document.getElementById("albumNoteTextarea");
   const visibilityToggle = document.getElementById(
-    "albumNotesVisibilityToggle"
+    "albumNotesVisibilityToggle",
   );
   const noteText = textarea ? textarea.value.trim() : "";
   const isVisible = !visibilityToggle.classList.contains("private");
@@ -4179,6 +4689,12 @@ async function closeAlbumNoteModal() {
   } catch (e) {
     console.warn("Auto-save album note failed:", e);
   }
+  // Also save album rating visibility on close
+  try {
+    await saveAlbumRatingVisibility();
+  } catch (e) {
+    console.warn("Auto-save album rating visibility failed:", e);
+  }
   modal.classList.add("hidden");
   window.currentAlbumNoteId = null;
 
@@ -4193,12 +4709,21 @@ async function closeAlbumNoteModal() {
   }
 }
 
-// Apply track rating
+// Apply old-style track rating (favorite/least/liked/disliked)
+let _applyingTrackRating = false;
 async function applyTrackRating(ratingType) {
+  if (_applyingTrackRating) return;
   if (!db || !currentUser || !currentRatingContext) {
     return;
   }
-
+  _applyingTrackRating = true;
+  try {
+    await _applyTrackRatingInner(ratingType);
+  } finally {
+    _applyingTrackRating = false;
+  }
+}
+async function _applyTrackRatingInner(ratingType) {
   // Prevent non-participants from applying ratings
   const isParticipant =
     window.currentParticipants &&
@@ -4206,7 +4731,7 @@ async function applyTrackRating(ratingType) {
   if (!isParticipant) {
     await showCustomAlert(
       "Join the discussion to rate tracks.",
-      "Join to Participate"
+      "Join to Participate",
     );
     return;
   }
@@ -4221,37 +4746,35 @@ async function applyTrackRating(ratingType) {
   const newUserRating = { ...userRating };
 
   if (ratingType === "favorite") {
-    // Only one favorite allowed
-    newUserRating.favorite = trackKey;
+    if (newUserRating.favorite === trackKey) {
+      delete newUserRating.favorite;
+    } else {
+      newUserRating.favorite = trackKey;
+    }
   } else if (ratingType === "least") {
-    // Only one least favorite allowed
-    newUserRating.leastFavorite = trackKey;
+    if (newUserRating.leastFavorite === trackKey) {
+      delete newUserRating.leastFavorite;
+    } else {
+      newUserRating.leastFavorite = trackKey;
+    }
   } else if (ratingType === "liked") {
-    // Multiple liked tracks allowed
     const liked = newUserRating.liked || [];
     if (liked.includes(trackKey)) {
-      // Remove if already liked
       newUserRating.liked = liked.filter((k) => k !== trackKey);
     } else {
-      // Add to liked
       newUserRating.liked = [...liked, trackKey];
-      // Remove from disliked if it was there
       if (newUserRating.disliked) {
         newUserRating.disliked = newUserRating.disliked.filter(
-          (k) => k !== trackKey
+          (k) => k !== trackKey,
         );
       }
     }
   } else if (ratingType === "disliked") {
-    // Multiple disliked tracks allowed
     const disliked = newUserRating.disliked || [];
     if (disliked.includes(trackKey)) {
-      // Remove if already disliked
       newUserRating.disliked = disliked.filter((k) => k !== trackKey);
     } else {
-      // Add to disliked
       newUserRating.disliked = [...disliked, trackKey];
-      // Remove from liked if it was there
       if (newUserRating.liked) {
         newUserRating.liked = newUserRating.liked.filter((k) => k !== trackKey);
       }
@@ -4266,7 +4789,6 @@ async function applyTrackRating(ratingType) {
     delete newUserRating.disliked;
   }
 
-  // Update or remove user rating
   if (Object.keys(newUserRating).length > 0) {
     updatedRatings[userEmail] = newUserRating;
   } else {
@@ -4278,44 +4800,33 @@ async function applyTrackRating(ratingType) {
       trackRatings: updatedRatings,
     });
 
-    // Update in-memory context so modal can reflect changes immediately
-    try {
-      if (currentRatingContext) {
-        currentRatingContext.currentRatings = updatedRatings;
+    // Update in-memory context
+    if (currentRatingContext) {
+      currentRatingContext.currentRatings = updatedRatings;
 
-        // Refresh avatars in the open modal
-        renderRatingAvatars(track, updatedRatings);
+      // Refresh avatars in the open modal
+      renderRatingAvatars(track, updatedRatings);
 
-        // Update album in window.currentAlbums so overview stays fresh
-        if (window.currentAlbums) {
-          const albumIndex = window.currentAlbums.findIndex(
-            (a) => a.id === albumId
-          );
-          if (albumIndex !== -1) {
-            window.currentAlbums[albumIndex].trackRatings = updatedRatings;
-          }
+      if (window.currentAlbums) {
+        const albumIndex = window.currentAlbums.findIndex(
+          (a) => a.id === albumId,
+        );
+        if (albumIndex !== -1) {
+          window.currentAlbums[albumIndex].trackRatings = updatedRatings;
         }
       }
-    } catch (e) {
-      console.warn(
-        "Error updating in-memory ratings after applyTrackRating:",
-        e
-      );
     }
 
-    // Reload albums after rating (modal stays open)
+    // Reload albums
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
     loadAlbums(monthKey);
   } catch (error) {
     console.error("Error rating track:", error);
-    console.error("Error code:", error.code);
-    console.error("Error message:", error.message);
-
     if (error.code === "permission-denied") {
       showCustomAlert(
-        "Permission denied. You need to be signed in to rate tracks."
+        "Permission denied. You need to be signed in to rate tracks.",
       );
     } else {
       showCustomAlert("Failed to save rating: " + error.message);
@@ -4323,11 +4834,440 @@ async function applyTrackRating(ratingType) {
   }
 }
 
+// Save track rating (0-10 scale)
+async function saveTrackRating(ratingValue) {
+  if (!db || !currentUser || !currentRatingContext) {
+    return;
+  }
+
+  // Prevent non-participants from applying ratings
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    await showCustomAlert(
+      "Join the discussion to rate tracks.",
+      "Join to Participate",
+    );
+    return;
+  }
+
+  ratingValue = parseFloat(ratingValue);
+
+  const { albumId, track, currentRatings } = currentRatingContext;
+  const trackKey = `${track.position}-${track.title}`;
+  const userEmail = currentUser.email;
+  const userRating = currentRatings[userEmail] || {};
+
+  // Clone current ratings
+  const updatedRatings = { ...currentRatings };
+  const newUserRating = { ...userRating };
+
+  // Initialize ratings object if it doesn't exist
+  if (!newUserRating.ratings) {
+    newUserRating.ratings = {};
+  }
+
+  // Set the track rating
+  newUserRating.ratings[trackKey] = ratingValue;
+
+  // Save rating visibility
+  if (!newUserRating.ratingsVisible) {
+    newUserRating.ratingsVisible = {};
+  }
+  const visToggle = document.getElementById("trackRatingVisibilityToggle");
+  newUserRating.ratingsVisible[trackKey] = visToggle
+    ? !visToggle.classList.contains("private")
+    : false;
+
+  // Update user rating
+  updatedRatings[userEmail] = newUserRating;
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      trackRatings: updatedRatings,
+    });
+
+    // Update in-memory context
+    if (currentRatingContext) {
+      currentRatingContext.currentRatings = updatedRatings;
+
+      // Update album in window.currentAlbums
+      if (window.currentAlbums) {
+        const albumIndex = window.currentAlbums.findIndex(
+          (a) => a.id === albumId,
+        );
+        if (albumIndex !== -1) {
+          window.currentAlbums[albumIndex].trackRatings = updatedRatings;
+        }
+      }
+    }
+
+    // Update display
+    const ratingDisplay = document.getElementById("trackRatingValue");
+    if (ratingDisplay) {
+      ratingDisplay.textContent = ratingValue;
+    }
+
+    // Refresh ratings display
+    displayTrackRatings(updatedRatings, trackKey);
+
+    // Reload albums
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+  } catch (error) {
+    console.error("Error saving track rating:", error);
+    showCustomAlert("Failed to save rating: " + error.message);
+  }
+}
+
+// Clear track rating
+async function clearTrackRating() {
+  if (!db || !currentUser || !currentRatingContext) {
+    return;
+  }
+
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    return;
+  }
+
+  const { albumId, track, currentRatings } = currentRatingContext;
+  const trackKey = `${track.position}-${track.title}`;
+  const userEmail = currentUser.email;
+  const userRating = currentRatings[userEmail];
+
+  if (
+    !userRating ||
+    !userRating.ratings ||
+    userRating.ratings[trackKey] === undefined
+  ) {
+    return; // Nothing to clear
+  }
+
+  // Clone and update
+  const updatedRatings = { ...currentRatings };
+  const newUserRating = { ...userRating };
+  delete newUserRating.ratings[trackKey];
+
+  // Also clean up ratingsVisible for this track
+  if (newUserRating.ratingsVisible) {
+    delete newUserRating.ratingsVisible[trackKey];
+    if (Object.keys(newUserRating.ratingsVisible).length === 0) {
+      delete newUserRating.ratingsVisible;
+    }
+  }
+
+  // Clean up empty ratings object
+  if (Object.keys(newUserRating.ratings).length === 0) {
+    delete newUserRating.ratings;
+  }
+
+  // Clean up empty user rating
+  if (Object.keys(newUserRating).length === 0) {
+    delete updatedRatings[userEmail];
+  } else {
+    updatedRatings[userEmail] = newUserRating;
+  }
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      trackRatings: updatedRatings,
+    });
+
+    // Update in-memory context
+    if (currentRatingContext) {
+      currentRatingContext.currentRatings = updatedRatings;
+
+      if (window.currentAlbums) {
+        const albumIndex = window.currentAlbums.findIndex(
+          (a) => a.id === albumId,
+        );
+        if (albumIndex !== -1) {
+          window.currentAlbums[albumIndex].trackRatings = updatedRatings;
+        }
+      }
+    }
+
+    // Reset UI
+    clearRatingGridSelection("trackRatingGrid", "trackRatingValue");
+
+    // Refresh ratings display
+    displayTrackRatings(updatedRatings, trackKey);
+
+    // Reload albums
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+  } catch (error) {
+    console.error("Error clearing track rating:", error);
+    showCustomAlert("Failed to clear rating: " + error.message);
+  }
+}
+
+// Save album rating (0-10 scale)
+async function saveAlbumRating(ratingValue) {
+  if (!db || !currentUser || !currentAlbumNoteContext) {
+    return;
+  }
+
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    await showCustomAlert(
+      "Join the discussion to rate albums.",
+      "Join to Participate",
+    );
+    return;
+  }
+
+  ratingValue = parseFloat(ratingValue);
+
+  const { albumId } = currentAlbumNoteContext;
+  const userEmail = currentUser.email;
+
+  // Get current album
+  const album = window.currentAlbums?.find((a) => a.id === albumId);
+  const albumRatings = album?.albumRatings || {};
+
+  // Update ratings
+  const updatedAlbumRatings = { ...albumRatings };
+  updatedAlbumRatings[userEmail] = ratingValue;
+
+  // Save rating visibility
+  const albumRatingsVisible = album?.albumRatingsVisible || {};
+  const updatedAlbumRatingsVisible = { ...albumRatingsVisible };
+  const albumVisToggle = document.getElementById("albumRatingVisibilityToggle");
+  updatedAlbumRatingsVisible[userEmail] = albumVisToggle
+    ? !albumVisToggle.classList.contains("private")
+    : false;
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      albumRatings: updatedAlbumRatings,
+      albumRatingsVisible: updatedAlbumRatingsVisible,
+    });
+
+    // Update in-memory
+    if (window.currentAlbums) {
+      const albumIndex = window.currentAlbums.findIndex(
+        (a) => a.id === albumId,
+      );
+      if (albumIndex !== -1) {
+        window.currentAlbums[albumIndex].albumRatings = updatedAlbumRatings;
+        window.currentAlbums[albumIndex].albumRatingsVisible =
+          updatedAlbumRatingsVisible;
+      }
+    }
+
+    // Update display
+    const ratingDisplay = document.getElementById("albumRatingValue");
+    if (ratingDisplay) {
+      ratingDisplay.textContent = ratingValue;
+    }
+
+    // Refresh ratings display
+    displayAlbumRatings(updatedAlbumRatings, updatedAlbumRatingsVisible);
+
+    // Reload albums
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+  } catch (error) {
+    console.error("Error saving album rating:", error);
+    showCustomAlert("Failed to save album rating: " + error.message);
+  }
+}
+
+// Save album rating visibility independently (called on modal close)
+async function saveAlbumRatingVisibility() {
+  if (!db || !currentUser || !currentAlbumNoteContext) return;
+  const { albumId } = currentAlbumNoteContext;
+  const userEmail = currentUser.email;
+  const album = window.currentAlbums?.find((a) => a.id === albumId);
+  if (!album) return;
+
+  // Only save if user has a rating
+  const albumRatings = album.albumRatings || {};
+  if (albumRatings[userEmail] === undefined) return;
+
+  const albumRatingsVisible = album.albumRatingsVisible || {};
+  const albumVisToggle = document.getElementById("albumRatingVisibilityToggle");
+  const newVisible = albumVisToggle
+    ? !albumVisToggle.classList.contains("private")
+    : false;
+
+  // Skip if nothing changed
+  if (albumRatingsVisible[userEmail] === newVisible) return;
+
+  const updatedAlbumRatingsVisible = { ...albumRatingsVisible };
+  updatedAlbumRatingsVisible[userEmail] = newVisible;
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      albumRatingsVisible: updatedAlbumRatingsVisible,
+    });
+    if (window.currentAlbums) {
+      const idx = window.currentAlbums.findIndex((a) => a.id === albumId);
+      if (idx !== -1) {
+        window.currentAlbums[idx].albumRatingsVisible =
+          updatedAlbumRatingsVisible;
+      }
+    }
+  } catch (e) {
+    console.error("Error saving album rating visibility:", e);
+  }
+}
+
+// Clear album rating
+async function clearAlbumRating() {
+  if (!db || !currentUser || !currentAlbumNoteContext) {
+    return;
+  }
+
+  const isParticipant =
+    window.currentParticipants &&
+    window.currentParticipants.some((p) => p.email === currentUser.email);
+  if (!isParticipant) {
+    return;
+  }
+
+  const { albumId } = currentAlbumNoteContext;
+  const userEmail = currentUser.email;
+
+  const album = window.currentAlbums?.find((a) => a.id === albumId);
+  const albumRatings = album?.albumRatings || {};
+
+  if (albumRatings[userEmail] === undefined) {
+    return; // Nothing to clear
+  }
+
+  const updatedAlbumRatings = { ...albumRatings };
+  delete updatedAlbumRatings[userEmail];
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      albumRatings: updatedAlbumRatings,
+    });
+
+    // Update in-memory
+    if (window.currentAlbums) {
+      const albumIndex = window.currentAlbums.findIndex(
+        (a) => a.id === albumId,
+      );
+      if (albumIndex !== -1) {
+        window.currentAlbums[albumIndex].albumRatings = updatedAlbumRatings;
+      }
+    }
+
+    // Reset UI
+    clearRatingGridSelection("albumRatingGrid", "albumRatingValue");
+
+    // Refresh ratings display
+    displayAlbumRatings(updatedAlbumRatings, album?.albumRatingsVisible || {});
+
+    // Reload albums
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+  } catch (error) {
+    console.error("Error clearing album rating:", error);
+    showCustomAlert("Failed to clear album rating: " + error.message);
+  }
+}
+
+// Display other users' album ratings
+function displayAlbumRatings(albumRatings, albumRatingsVisible) {
+  const container = document.getElementById("albumRatingsDisplay");
+  if (!container) return;
+  container.innerHTML = "";
+  const visMap = albumRatingsVisible || {};
+
+  // For past months, show all ratings regardless of visibility setting
+  const _now = new Date();
+  const _realMK = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}`;
+  const _viewedMK = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+  const _isPast = _viewedMK < _realMK;
+
+  const ratingsArray = [];
+  Object.entries(albumRatings || {}).forEach(([userEmail, rating]) => {
+    // Skip users who have hidden their album rating (unless it's the current user or past month)
+    if (
+      userEmail !== currentUser?.email &&
+      !_isPast &&
+      visMap[userEmail] !== true
+    )
+      return;
+
+    const participant = window.currentParticipants?.find(
+      (p) => p.email === userEmail,
+    );
+    if (participant && userEmail !== currentUser?.email) {
+      ratingsArray.push({
+        email: userEmail,
+        name: participant.name.split(" ")[0],
+        picture: participant.picture,
+        rating: rating,
+      });
+    }
+  });
+
+  if (ratingsArray.length === 0) return;
+
+  const title = document.createElement("div");
+  title.className = "ratings-display-title";
+  title.textContent = "Other Ratings";
+  container.appendChild(title);
+
+  const ratingsGrid = document.createElement("div");
+  ratingsGrid.className = "ratings-grid";
+
+  ratingsArray.forEach(({ email, name, picture, rating }) => {
+    const ratingItem = document.createElement("div");
+    ratingItem.className = "rating-item";
+
+    const avatar = document.createElement("img");
+    avatar.src = picture;
+    avatar.alt = name;
+    avatar.className = "rating-avatar";
+    avatar.onerror = () => {
+      const emoji = getAnimalEmojiForUser(email);
+      const emojiSpan = document.createElement("span");
+      emojiSpan.textContent = emoji;
+      emojiSpan.className = "rating-avatar-emoji";
+      avatar.replaceWith(emojiSpan);
+    };
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "rating-name";
+    nameEl.textContent = name;
+
+    const ratingValueEl = document.createElement("span");
+    ratingValueEl.className = "rating-value";
+    ratingValueEl.textContent = rating;
+
+    ratingItem.appendChild(avatar);
+    ratingItem.appendChild(nameEl);
+    ratingItem.appendChild(ratingValueEl);
+    ratingsGrid.appendChild(ratingItem);
+  });
+
+  container.appendChild(ratingsGrid);
+}
+
 // Toggle highlight on participant's album when clicking their avatar
 function toggleHighlightAlbum(email) {
   const albums = document.querySelectorAll(".album-card");
   const participant = document.querySelector(
-    `.participant[data-email="${email}"]`
+    `.participant[data-email="${email}"]`,
   );
 
   // Check if already highlighted
@@ -4344,13 +5284,6 @@ function toggleHighlightAlbum(email) {
         album.style.removeProperty("--highlight-border");
         album.style.removeProperty("--highlight-shadow");
       }
-    });
-
-    // Remove highlight from vote avatars
-    document.querySelectorAll(".vote-avatar-highlight").forEach((el) => {
-      el.classList.remove("vote-avatar-highlight");
-      el.style.removeProperty("filter");
-      el.style.removeProperty("transform");
     });
 
     // Remove highlight from track ratings
@@ -4370,12 +5303,6 @@ function toggleHighlightAlbum(email) {
       a.classList.remove("highlighted-album");
       a.style.removeProperty("--highlight-border");
       a.style.removeProperty("--highlight-shadow");
-    });
-    document.querySelectorAll(".vote-avatar-highlight").forEach((el) => {
-      el.classList.remove("vote-avatar-highlight");
-      el.style.removeProperty("filter");
-      el.style.removeProperty("transform");
-      el.style.removeProperty("z-index");
     });
     document.querySelectorAll(".track-rating-highlight").forEach((el) => {
       el.classList.remove("track-rating-highlight");
@@ -4406,17 +5333,6 @@ function toggleHighlightAlbum(email) {
       }
     });
 
-    // Highlight their votes (vote avatars)
-    document.querySelectorAll("[data-voter-email]").forEach((voteElement) => {
-      if (voteElement.dataset.voterEmail === email) {
-        voteElement.classList.add("vote-avatar-highlight");
-        voteElement.style.filter = `drop-shadow(0 0 15px ${color.shadow}) drop-shadow(0 0 20px ${color.border})`;
-        voteElement.style.transform = "scale(1.2)";
-        voteElement.style.transition = "all 0.3s ease";
-        voteElement.style.zIndex = "10";
-      }
-    });
-
     // Highlight their track ratings - highlight the whole track item
     document.querySelectorAll(".track-rating").forEach((rating) => {
       if (rating.dataset.userEmail === email) {
@@ -4439,7 +5355,7 @@ function toggleHighlightAlbum(email) {
 function scrollToAlbumByEmail(email) {
   if (!email) return;
   const albumCard = document.querySelector(
-    `.album-card[data-added-by="${email}"]`
+    `.album-card[data-added-by="${email}"]`,
   );
   if (!albumCard) return;
 
@@ -4453,70 +5369,6 @@ function scrollToAlbumByEmail(email) {
   setTimeout(() => {
     albumCard.classList.remove("album-temp-focus");
   }, 1800);
-}
-
-// Show voting warning modal
-async function showVotingModal() {
-  if (!currentUser) {
-    await showCustomAlert("You must be signed in to vote.");
-    return;
-  }
-
-  // Check album count first
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-  // Check if user is a participant
-  const isParticipant =
-    window.currentParticipants &&
-    window.currentParticipants.some((p) => p.email === currentUser.email);
-
-  if (!isParticipant) {
-    showCustomAlert(
-      "Only participants can vote. Please join the discussion first."
-    );
-    return;
-  }
-
-  // Load current month's albums to check count and locked status
-  const snapshot = await db
-    .collection("albums")
-    .where("monthKey", "==", monthKey)
-    .get();
-
-  let albumCount = 0;
-  let unlockedAlbums = [];
-  snapshot.forEach((doc) => {
-    const data = doc.data();
-    if (data.addedBy !== currentUser.email) {
-      albumCount++;
-    }
-    // Check if any album is not locked
-    if (!data.locked) {
-      unlockedAlbums.push(data.addedByName || data.addedBy);
-    }
-  });
-
-  if (albumCount < 2) {
-    showCustomAlert(
-      "Voting requires at least 2 other albums (you need at least 3 total participants)."
-    );
-    return;
-  }
-
-  // Check if all albums are locked
-  if (unlockedAlbums.length > 0) {
-    const participantList = unlockedAlbums.join(", ");
-    showCustomAlert(
-      `All albums must be locked before voting can start.\n\nParticipants with unlocked albums: ${participantList}`
-    );
-    return;
-  }
-
-  // Show warning modal
-  const warningModal = document.getElementById("votingWarningModal");
-  warningModal.classList.remove("hidden");
 }
 
 // Mobile scroll-to-top behavior: show when scrolled down and handle click
@@ -4551,419 +5403,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// Close voting warning modal
-function closeVotingWarningModal() {
-  const warningModal = document.getElementById("votingWarningModal");
-  warningModal.classList.add("hidden");
-}
-
-// Show second voting confirmation modal
-function showVotingConfirmModal() {
-  closeVotingWarningModal();
-  const confirmModal = document.getElementById("votingConfirmModal");
-  confirmModal.classList.remove("hidden");
-}
-
-// Close second voting confirmation modal
-function closeVotingConfirmModal() {
-  const confirmModal = document.getElementById("votingConfirmModal");
-  confirmModal.classList.add("hidden");
-}
-
-// Confirm and start voting
-async function confirmVotingStart() {
-  closeVotingConfirmModal();
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-  try {
-    console.log("Activating voting for:", monthKey);
-
-    // Set votingActive flag on all albums for this month
-    const snapshot = await db
-      .collection("albums")
-      .where("monthKey", "==", monthKey)
-      .get();
-
-    const batch = db.batch();
-    snapshot.forEach((doc) => {
-      batch.update(doc.ref, {
-        votingActive: true,
-        votingStartedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        votingStartedBy: currentUser.email,
-      });
-    });
-
-    await batch.commit();
-    console.log("Voting activated successfully");
-
-    // Set global flag
-    window.currentVotingActive = true;
-
-    // Show overlay animation
-    showVotingOverlay();
-
-    // Reload albums to show voting UI
-    await loadAlbums(monthKey);
-  } catch (error) {
-    console.error("Error starting voting:", error);
-    showCustomAlert("Failed to start voting: " + error.message);
-  }
-}
-
-// Show end voting confirmation modal
-function showEndVotingConfirmModal() {
-  // Only moderators can end voting
-  if (!currentUser || !isModerator(currentUser.email)) {
-    showCustomAlert("Only moderators can end voting.");
-    return;
-  }
-  const modal = document.getElementById("endVotingConfirmModal");
-  modal.classList.remove("hidden");
-}
-
-function closeEndVotingConfirmModal() {
-  const modal = document.getElementById("endVotingConfirmModal");
-  modal.classList.add("hidden");
-}
-
-// Confirm and end voting manually
-async function confirmEndVoting() {
-  closeEndVotingConfirmModal();
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-  try {
-    console.log("Manually ending voting for:", monthKey);
-    await endVotingAutomatically(monthKey);
-    showCustomAlert("Voting has been ended.");
-  } catch (error) {
-    console.error("Error ending voting:", error);
-    showCustomAlert("Failed to end voting: " + error.message);
-  }
-}
-
-// Show reset voting confirmation modal
-function showResetVotingConfirmModal() {
-  // Only moderators can reset voting
-  if (!currentUser || !isModerator(currentUser.email)) {
-    showCustomAlert("Only moderators can reset voting.");
-    return;
-  }
-  const modal = document.getElementById("resetVotingConfirmModal");
-  modal.classList.remove("hidden");
-}
-
-function closeResetVotingConfirmModal() {
-  const modal = document.getElementById("resetVotingConfirmModal");
-  modal.classList.add("hidden");
-}
-
-// Confirm and reset voting
-async function confirmResetVoting() {
-  closeResetVotingConfirmModal();
-
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-  try {
-    console.log("Resetting votes for:", monthKey);
-
-    // Clear all votes from all albums for this month
-    const snapshot = await db
-      .collection("albums")
-      .where("monthKey", "==", monthKey)
-      .get();
-
-    const batch = db.batch();
-    snapshot.forEach((doc) => {
-      batch.update(doc.ref, {
-        votes: {},
-        votingActive: false,
-      });
-    });
-
-    await batch.commit();
-    console.log("Votes reset successfully");
-
-    // Set global flag
-    window.currentVotingActive = false;
-
-    showCustomAlert(
-      "All votes have been reset. You can now start voting again."
-    );
-
-    // Reload albums to show cleared votes
-    await loadAlbums(monthKey);
-  } catch (error) {
-    console.error("Error resetting votes:", error);
-    showCustomAlert("Failed to reset votes: " + error.message);
-  }
-}
-
-// End voting automatically when all participants have voted
-async function endVotingAutomatically(monthKey) {
-  try {
-    console.log("Ending voting automatically for:", monthKey);
-
-    // Set votingActive flag to false on all albums for this month
-    const snapshot = await db
-      .collection("albums")
-      .where("monthKey", "==", monthKey)
-      .get();
-
-    const batch = db.batch();
-    snapshot.forEach((doc) => {
-      batch.update(doc.ref, {
-        votingActive: false,
-      });
-    });
-
-    await batch.commit();
-    console.log("Voting ended automatically - all participants have voted");
-
-    // Set global flag
-    window.currentVotingActive = false;
-
-    showCustomAlert("All participants have voted! Voting is now complete.");
-
-    // Reload albums to hide voting UI and show final results
-    await loadAlbums(monthKey);
-  } catch (error) {
-    console.error("Error ending voting:", error);
-    showCustomAlert("Failed to end voting: " + error.message);
-  }
-}
-
-// Show voting overlay animation
-function showVotingOverlay() {
-  const overlay = document.getElementById("votingOverlay");
-  overlay.classList.remove("hidden");
-
-  // Auto-hide after 3 seconds
-  setTimeout(() => {
-    overlay.classList.add("hidden");
-  }, 3000);
-}
-
-// Voting system
-let currentMonthVotes = {
-  threePoints: null,
-  onePoint: null,
-};
-
-// Select vote for an album (inline on album card)
-async function selectVote(albumId, points) {
-  if (!currentUser) {
-    showCustomAlert("Please sign in to vote.");
-    return;
-  }
-
-  // Check if user has already voted
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-  const albumsSnapshot = await db
-    .collection("albums")
-    .where("monthKey", "==", monthKey)
-    .get();
-
-  let userHasVoted = false;
-  albumsSnapshot.forEach((doc) => {
-    const votes = doc.data().votes || {};
-    if (votes[currentUser.email]) {
-      userHasVoted = true;
-    }
-  });
-
-  if (userHasVoted) {
-    showCustomAlert("You have already submitted your votes for this month.");
-    return;
-  }
-
-  // Store previous votes
-  const previousVotes = { ...currentMonthVotes };
-
-  // Get list of votable albums (not user's own album)
-  const votableAlbums = [];
-  document.querySelectorAll(".album-vote-circle").forEach((circle) => {
-    const id = circle.dataset.albumId;
-    if (!votableAlbums.includes(id)) {
-      votableAlbums.push(id);
-    }
-  });
-
-  // Update selection - allow toggling and swapping
-  if (points === 3) {
-    // If clicking same album that already has 3, remove it
-    if (currentMonthVotes.threePoints === albumId) {
-      currentMonthVotes.threePoints = null;
-    } else {
-      // If this album already has 1 point, swap the votes
-      if (currentMonthVotes.onePoint === albumId) {
-        currentMonthVotes.onePoint = currentMonthVotes.threePoints;
-        currentMonthVotes.threePoints = albumId;
-      } else {
-        currentMonthVotes.threePoints = albumId;
-      }
-    }
-  } else if (points === 1) {
-    // If clicking same album that already has 1, remove it
-    if (currentMonthVotes.onePoint === albumId) {
-      currentMonthVotes.onePoint = null;
-    } else {
-      // If this album already has 3 points, swap the votes
-      if (currentMonthVotes.threePoints === albumId) {
-        currentMonthVotes.threePoints = currentMonthVotes.onePoint;
-        currentMonthVotes.onePoint = albumId;
-      } else {
-        currentMonthVotes.onePoint = albumId;
-      }
-    }
-  }
-
-  // Auto-assign remaining vote if only 2 albums to vote on
-  if (votableAlbums.length === 2) {
-    const otherAlbumId = votableAlbums.find((id) => id !== albumId);
-    if (currentMonthVotes.threePoints && !currentMonthVotes.onePoint) {
-      currentMonthVotes.onePoint = otherAlbumId;
-    } else if (currentMonthVotes.onePoint && !currentMonthVotes.threePoints) {
-      currentMonthVotes.threePoints = otherAlbumId;
-    }
-  }
-
-  // Update UI to show selections
-  updateVoteUI();
-
-  // Show/hide submit button based on whether both votes are selected
-  const submitBtn = document.getElementById("submitVotesBtn");
-  if (
-    submitBtn &&
-    currentMonthVotes.threePoints &&
-    currentMonthVotes.onePoint
-  ) {
-    submitBtn.style.display = "inline-block";
-  } else if (submitBtn) {
-    submitBtn.style.display = "none";
-  }
-}
-
-// Update vote UI
-function updateVoteUI() {
-  document
-    .querySelectorAll(".album-vote-circle")
-    .forEach((circle) => circle.classList.remove("selected"));
-
-  if (currentMonthVotes.threePoints) {
-    const circle3 = document.querySelector(
-      `.album-vote-circle.vote-3[data-album-id="${currentMonthVotes.threePoints}"]`
-    );
-    circle3?.classList.add("selected");
-  }
-
-  if (currentMonthVotes.onePoint) {
-    const circle1 = document.querySelector(
-      `.album-vote-circle.vote-1[data-album-id="${currentMonthVotes.onePoint}"]`
-    );
-    circle1?.classList.add("selected");
-  }
-}
-
-// Submit votes
-async function submitVotes() {
-  if (!currentMonthVotes.threePoints || !currentMonthVotes.onePoint) {
-    showCustomAlert(
-      "Please select both votes (3 points and 1 point) before submitting."
-    );
-    return;
-  }
-
-  try {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
-
-    // Check if user has already voted
-    const vote3Album = db
-      .collection("albums")
-      .doc(currentMonthVotes.threePoints);
-    const vote3Doc = await vote3Album.get();
-    const existingVotes3 = vote3Doc.data().votes || {};
-
-    if (existingVotes3[currentUser.email]) {
-      showCustomAlert("You have already submitted your votes for this month.");
-      return;
-    }
-
-    // Update vote counts for both albums
-    const vote1Album = db.collection("albums").doc(currentMonthVotes.onePoint);
-
-    await db.runTransaction(async (transaction) => {
-      const vote3Doc = await transaction.get(vote3Album);
-      const vote1Doc = await transaction.get(vote1Album);
-
-      const votes3 = vote3Doc.data().votes || {};
-      const votes1 = vote1Doc.data().votes || {};
-
-      votes3[currentUser.email] = 3;
-      votes1[currentUser.email] = 1;
-
-      transaction.update(vote3Album, { votes: votes3 });
-      transaction.update(vote1Album, { votes: votes1 });
-    });
-
-    showCustomAlert("Votes submitted successfully!");
-
-    // Reset votes
-    currentMonthVotes = {
-      threePoints: null,
-      onePoint: null,
-    };
-
-    // Hide submit button
-    const submitBtn = document.getElementById("submitVotesBtn");
-    if (submitBtn) {
-      submitBtn.style.display = "none";
-    }
-
-    // Check if all participants have voted
-    const participantsSnapshot = await db
-      .collection("participants")
-      .where("monthKey", "==", monthKey)
-      .get();
-    const totalParticipants = participantsSnapshot.size;
-
-    // Get all albums and count unique voters
-    const albumsSnapshot = await db
-      .collection("albums")
-      .where("monthKey", "==", monthKey)
-      .get();
-
-    const uniqueVoters = new Set();
-    albumsSnapshot.forEach((doc) => {
-      const votes = doc.data().votes || {};
-      Object.keys(votes).forEach((email) => uniqueVoters.add(email));
-    });
-
-    // If all participants have voted, end voting automatically
-    if (uniqueVoters.size >= totalParticipants) {
-      await endVotingAutomatically(monthKey);
-    } else {
-      // Just reload albums to show updated votes
-      await loadAlbums(monthKey);
-    }
-  } catch (error) {
-    console.error("Error submitting votes:", error);
-    showCustomAlert("Failed to submit votes: " + error.message);
-  }
-}
-
 // Load albums from Firebase
 async function loadAlbums(monthKey) {
   if (!db) {
@@ -4978,15 +5417,9 @@ async function loadAlbums(monthKey) {
       .where("monthKey", "==", monthKey)
       .get();
 
-    let votingActive = false;
     const albums = [];
     snapshot.forEach((doc) => {
       const data = doc.data();
-
-      // Check if voting is active from any album
-      if (data.votingActive === true) {
-        votingActive = true;
-      }
 
       albums.push({
         id: doc.id,
@@ -4997,136 +5430,20 @@ async function loadAlbums(monthKey) {
         playlistId: data.playlistId || "",
         tracks: data.tracks || [],
         trackRatings: data.trackRatings || {},
+        albumRatings: data.albumRatings || {},
+        albumRatingsVisible: data.albumRatingsVisible || {},
         externalLinks: data.externalLinks || [],
         albumNotes: data.albumNotes || {},
+        votes: data.votes || {},
         addedBy: data.addedBy,
         addedByName: data.addedByName,
         locked: data.locked || false,
-        votes: data.votes || {},
-        votingActive: data.votingActive || false,
         createdAt: data.createdAt,
       });
     });
 
-    window.currentVotingActive = votingActive;
-    console.log(
-      "loadAlbums: Set window.currentVotingActive to",
-      votingActive,
-      "from",
-      albums.length,
-      "albums"
-    );
-
     // Store albums in global variable for access by updateParticipants
     window.currentAlbums = albums;
-
-    // Check if current user has already voted
-    let userHasVoted = false;
-    if (votingActive && currentUser) {
-      albums.forEach((album) => {
-        if (album.votes && album.votes[currentUser.email]) {
-          userHasVoted = true;
-        }
-      });
-    }
-
-    // Set global flag so album rendering knows if user has voted
-    window.userHasVotedThisMonth = userHasVoted;
-
-    // Update voting status message
-    const votingStatusMessage = document.getElementById("votingStatusMessage");
-    if (votingStatusMessage && votingActive && userHasVoted && currentUser) {
-      // Get all participants
-      const participantsSnapshot = await db
-        .collection("participants")
-        .where("monthKey", "==", monthKey)
-        .get();
-
-      // Get all voters
-      const uniqueVoters = new Set();
-      albums.forEach((album) => {
-        if (album.votes) {
-          Object.keys(album.votes).forEach((email) => uniqueVoters.add(email));
-        }
-      });
-
-      // Find who hasn't voted yet
-      const waitingOn = [];
-      participantsSnapshot.forEach((doc) => {
-        const participant = doc.data();
-        if (!uniqueVoters.has(participant.email)) {
-          waitingOn.push(participant.name);
-        }
-      });
-
-      if (waitingOn.length > 0) {
-        votingStatusMessage.textContent = `⏳ Waiting on ${waitingOn.join(
-          ", "
-        )} to cast their vote${waitingOn.length > 1 ? "s" : ""}`;
-        votingStatusMessage.style.display = "block";
-      } else {
-        votingStatusMessage.style.display = "none";
-      }
-    } else if (votingStatusMessage) {
-      votingStatusMessage.style.display = "none";
-    }
-
-    // Show/hide voting buttons based on voting state and user vote status
-    const submitBtn = document.getElementById("submitVotesBtn");
-    const startBtn = document.getElementById("startVotingBtn");
-    const endBtn = document.getElementById("endVotingBtn");
-    const resetBtn = document.getElementById("resetVotingBtn");
-    const votingModeTitle = document.getElementById("votingModeTitle");
-    const userIsModerator = currentUser && isModerator(currentUser.email);
-
-    // Show/hide "TIME TO CHOOSE" title based on voting state
-    if (votingModeTitle) {
-      votingModeTitle.style.display = votingActive ? "block" : "none";
-    }
-
-    if (submitBtn && startBtn && endBtn && resetBtn) {
-      if (votingActive && !userHasVoted) {
-        // User can still vote
-        submitBtn.style.display = "none"; // Will show when both votes selected
-        startBtn.style.display = "none";
-        endBtn.style.display = userIsModerator ? "inline-block" : "none";
-        resetBtn.style.display = userIsModerator ? "inline-block" : "none";
-      } else if (votingActive && userHasVoted) {
-        // User already voted, hide all buttons except end/reset for moderator
-        submitBtn.style.display = "none";
-        startBtn.style.display = "none";
-        endBtn.style.display = userIsModerator ? "inline-block" : "none";
-        resetBtn.style.display = userIsModerator ? "inline-block" : "none";
-      } else {
-        // Voting not active
-        submitBtn.style.display = "none";
-        endBtn.style.display = "none";
-
-        // Check if there are any votes from a completed voting session
-        const hasAnyVotes = albums.some(
-          (album) => album.votes && Object.keys(album.votes).length > 0
-        );
-
-        // Get participant count to check if there are enough participants
-        const participantsSnapshot = await db
-          .collection("participants")
-          .where("monthKey", "==", monthKey)
-          .get();
-        const participantCount = participantsSnapshot.size;
-
-        // Only show Start Voting button if:
-        // 1. There are NO votes yet
-        // 2. There are at least 2 participants
-        // 3. There are at least 2 albums
-        const canStartVoting =
-          !hasAnyVotes && participantCount >= 2 && albums.length >= 2;
-        startBtn.style.display = canStartVoting ? "inline-block" : "none";
-
-        // Show reset button if there are votes to reset (moderator only)
-        resetBtn.style.display =
-          userIsModerator && hasAnyVotes ? "inline-block" : "none";
-      }
-    }
 
     // Update the albums array
     updateAlbums(albums);
@@ -5139,11 +5456,6 @@ async function loadAlbums(monthKey) {
     if (typeof equalizeAlbumTitleHeights === "function") {
       equalizeAlbumTitleHeights();
     }
-
-    // Update vote UI if voting is active
-    if (votingActive) {
-      updateVoteUI();
-    }
   } catch (error) {
     console.error("Error loading albums:", error);
     updateAlbums([]);
@@ -5151,23 +5463,316 @@ async function loadAlbums(monthKey) {
   }
 }
 
-// Show voting overlay animation
-function showVotingOverlay() {
-  const overlay = document.getElementById("votingOverlay");
-  overlay.classList.remove("hidden");
-
-  // Auto-hide after 3 seconds
-  setTimeout(() => {
-    overlay.classList.add("hidden");
-  }, 3000);
-}
-
-// Custom alert function
 // Initialize when DOM is ready
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", init);
 } else {
   init();
+}
+
+// Show/hide Vote Best Album button based on state
+function updateVoteBestAlbumButton() {
+  const btn = document.getElementById("voteBestAlbumBtn");
+  if (!btn) return;
+
+  const albums = window.currentAlbums || [];
+  const participants = window.currentParticipants || [];
+
+  // Show button if there are at least 2 albums and at least 2 participants
+  if (albums.length >= 2 && participants.length >= 2 && currentUser) {
+    btn.classList.remove("hidden");
+
+    // Check if everyone has voted on every album
+    const allVoted = albums.every((album) => {
+      const albumRatings = album.albumRatings || {};
+      return participants.every((p) => albumRatings[p.email] !== undefined);
+    });
+
+    // Check if all ratings are already revealed (voting ended)
+    const allRevealed =
+      allVoted &&
+      albums.every((album) => {
+        const visMap = album.albumRatingsVisible || {};
+        return participants.every((p) => visMap[p.email] === true);
+      });
+
+    if (allRevealed) {
+      btn.textContent = "🏆 Voting Ended";
+      btn.disabled = true;
+      btn.classList.add("joined"); // reuse the greyed-out style
+    } else {
+      btn.textContent = allVoted ? "🏆 Reveal Winner" : "🏆 Vote Best Album";
+      btn.disabled = false;
+      btn.classList.remove("joined");
+    }
+
+    // Show reset button only for moderators when voting has ended
+    const resetBtn = document.getElementById("resetVotingBtn");
+    if (resetBtn) {
+      if (allRevealed && currentUser && isModerator(currentUser.email)) {
+        resetBtn.classList.remove("hidden");
+      } else {
+        resetBtn.classList.add("hidden");
+      }
+    }
+  } else {
+    btn.classList.add("hidden");
+    const resetBtn = document.getElementById("resetVotingBtn");
+    if (resetBtn) resetBtn.classList.add("hidden");
+  }
+}
+
+// Vote Best Album — reveal all ratings and compute winner
+async function voteBestAlbum() {
+  const albums = window.currentAlbums || [];
+  const participants = window.currentParticipants || [];
+
+  if (albums.length === 0 || participants.length === 0) {
+    await showCustomAlert("No albums or participants found.");
+    return;
+  }
+
+  // Check that every participant has rated every album
+  const missing = [];
+  for (const album of albums) {
+    const albumRatings = album.albumRatings || {};
+    for (const participant of participants) {
+      if (albumRatings[participant.email] === undefined) {
+        const name = participant.name?.split(" ")[0] || participant.email;
+        const title = album.title || "Untitled";
+        missing.push(`${name} has not rated "${title}"`);
+      }
+    }
+  }
+
+  if (missing.length > 0) {
+    const resultsContainer = document.getElementById("bestAlbumResults");
+    if (!resultsContainer) return;
+
+    const warningHtml = `
+      <div class="best-album-missing-warning">
+        <strong>Not everyone has voted yet!</strong><br />
+        ${missing.map((m) => `• ${m}`).join("<br />")}
+      </div>
+      <p style="color: rgba(255,255,255,0.6); font-size: 0.9rem;">All participants must rate all albums before revealing results.</p>
+    `;
+    resultsContainer.innerHTML = warningHtml;
+    document.getElementById("bestAlbumModalTitle").textContent =
+      "⏳ Waiting for Votes";
+    document.getElementById("bestAlbumModal").classList.remove("hidden");
+    return;
+  }
+
+  // Confirm before revealing
+  const confirmed = await showCustomConfirm(
+    "This will reveal all track and album ratings to everyone. Continue?",
+  );
+  if (!confirmed) return;
+
+  // Make all album ratings visible and all track ratings visible
+  try {
+    for (const album of albums) {
+      const updates = {};
+
+      // Make all album ratings visible
+      const albumRatingsVisible = { ...(album.albumRatingsVisible || {}) };
+      for (const participant of participants) {
+        albumRatingsVisible[participant.email] = true;
+      }
+      updates.albumRatingsVisible = albumRatingsVisible;
+
+      // Make all track ratings visible
+      const trackRatings = { ...(album.trackRatings || {}) };
+      let trackRatingsChanged = false;
+      for (const participant of participants) {
+        const userRating = trackRatings[participant.email];
+        if (userRating && userRating.ratings) {
+          const ratingsVisible = { ...(userRating.ratingsVisible || {}) };
+          const tracks = Object.keys(userRating.ratings);
+          for (const trackKey of tracks) {
+            if (ratingsVisible[trackKey] !== true) {
+              ratingsVisible[trackKey] = true;
+              trackRatingsChanged = true;
+            }
+          }
+          trackRatings[participant.email] = {
+            ...userRating,
+            ratingsVisible,
+          };
+        }
+      }
+      if (trackRatingsChanged) {
+        updates.trackRatings = trackRatings;
+      }
+
+      await db.collection("albums").doc(album.id).update(updates);
+
+      // Update in-memory
+      const idx = window.currentAlbums.findIndex((a) => a.id === album.id);
+      if (idx !== -1) {
+        window.currentAlbums[idx].albumRatingsVisible = albumRatingsVisible;
+        if (trackRatingsChanged) {
+          window.currentAlbums[idx].trackRatings = trackRatings;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error revealing ratings:", e);
+    await showCustomAlert("Error revealing ratings. Please try again.");
+    return;
+  }
+
+  // Compute results: mean of all participant album ratings per album
+  const results = albums.map((album) => {
+    const albumRatings = album.albumRatings || {};
+    const scores = participants
+      .map((p) => albumRatings[p.email])
+      .filter((v) => v !== undefined);
+    const mean =
+      scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+    return {
+      album,
+      mean,
+      scores: participants.map((p) => ({
+        name: p.name?.split(" ")[0] || p.email,
+        picture: p.picture,
+        email: p.email,
+        score: albumRatings[p.email],
+      })),
+    };
+  });
+
+  // Sort by mean descending
+  results.sort((a, b) => b.mean - a.mean);
+
+  // Build results HTML
+  const resultsContainer = document.getElementById("bestAlbumResults");
+  if (!resultsContainer) return;
+
+  let html = '<div class="best-album-results-list">';
+  results.forEach((r, idx) => {
+    const isWinner = idx === 0;
+    const hue = (r.mean / 10) * 120;
+    const color = `hsl(${hue}, 80%, 55%)`;
+    const coverUrl = r.album.coverUrl || "";
+    const title = sanitizeAlbumTitle(r.album.title) || "Untitled";
+    const artist = sanitizeArtist(r.album.artist) || "";
+    const coverId = `best-album-cover-${idx}`;
+
+    html += `
+      <div class="best-album-result-item ${isWinner ? "winner" : ""}">
+        <div class="best-album-result-rank">${isWinner ? "🏆" : `#${idx + 1}`}</div>
+        ${coverUrl ? `<img class="best-album-result-cover" id="${coverId}" src="${coverUrl}" alt="" onerror="this.style.display='none'" />` : ""}
+        <div class="best-album-result-info">
+          <div class="best-album-result-title">${title}</div>
+          ${artist ? `<div class="best-album-result-artist">${artist}</div>` : ""}
+          <div class="best-album-result-voters">
+            ${r.scores
+              .map(
+                (s) =>
+                  `<span class="best-album-voter">${s.name} <span class="best-album-voter-score">${s.score !== undefined ? s.score : "—"}</span></span>`,
+              )
+              .join("")}
+          </div>
+        </div>
+        <div class="best-album-result-score" style="color: ${color}">${r.mean.toFixed(1)}</div>
+      </div>
+    `;
+  });
+  html += "</div>";
+
+  resultsContainer.innerHTML = html;
+  document.getElementById("bestAlbumModalTitle").textContent =
+    `🏆 Best Album: ${results[0].album.title}`;
+  document.getElementById("bestAlbumModal").classList.remove("hidden");
+
+  // Reload albums to reflect new visibility
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+  await loadAlbums(monthKey);
+}
+
+function closeBestAlbumModal() {
+  document.getElementById("bestAlbumModal")?.classList.add("hidden");
+}
+
+// Reset Voting — moderator only: hide all album & track ratings again
+async function resetVoting() {
+  if (!currentUser || !isModerator(currentUser.email)) {
+    await showCustomAlert("Only moderators can reset voting.");
+    return;
+  }
+
+  const confirmed = await showCustomConfirm(
+    "This will hide all revealed ratings and reset the voting state. Continue?",
+  );
+  if (!confirmed) return;
+
+  const albums = window.currentAlbums || [];
+  const participants = window.currentParticipants || [];
+
+  try {
+    for (const album of albums) {
+      const updates = {};
+
+      // Reset all album ratings visibility to false
+      const albumRatingsVisible = { ...(album.albumRatingsVisible || {}) };
+      for (const participant of participants) {
+        if (albumRatingsVisible[participant.email] !== undefined) {
+          albumRatingsVisible[participant.email] = false;
+        }
+      }
+      updates.albumRatingsVisible = albumRatingsVisible;
+
+      // Reset all track ratings visibility to false
+      const trackRatings = { ...(album.trackRatings || {}) };
+      let trackRatingsChanged = false;
+      for (const participant of participants) {
+        const userRating = trackRatings[participant.email];
+        if (userRating && userRating.ratingsVisible) {
+          const ratingsVisible = { ...(userRating.ratingsVisible || {}) };
+          for (const trackKey of Object.keys(ratingsVisible)) {
+            if (ratingsVisible[trackKey] === true) {
+              ratingsVisible[trackKey] = false;
+              trackRatingsChanged = true;
+            }
+          }
+          trackRatings[participant.email] = {
+            ...userRating,
+            ratingsVisible,
+          };
+        }
+      }
+      if (trackRatingsChanged) {
+        updates.trackRatings = trackRatings;
+      }
+
+      await db.collection("albums").doc(album.id).update(updates);
+
+      // Update in-memory
+      const idx = window.currentAlbums.findIndex((a) => a.id === album.id);
+      if (idx !== -1) {
+        window.currentAlbums[idx].albumRatingsVisible = albumRatingsVisible;
+        if (trackRatingsChanged) {
+          window.currentAlbums[idx].trackRatings = trackRatings;
+        }
+      }
+    }
+
+    // Reload albums to reflect changes
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    await loadAlbums(monthKey);
+
+    await showCustomAlert(
+      "Voting has been reset. All ratings are hidden again.",
+    );
+  } catch (e) {
+    console.error("Error resetting voting:", e);
+    await showCustomAlert("Error resetting voting. Please try again.");
+  }
 }
 
 // Load YouTube API
