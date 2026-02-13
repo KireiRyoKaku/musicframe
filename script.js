@@ -1525,8 +1525,8 @@ async function loadParticipants(monthKey) {
   }
 }
 
-// Toggle track rating visibility (per-track, like notes)
-function toggleTrackRatingVisibility() {
+// Toggle track rating visibility (per-track, like notes) and save to Firebase
+async function toggleTrackRatingVisibility() {
   try {
     const toggle = document.getElementById("trackRatingVisibilityToggle");
     const label = document.getElementById("trackRatingVisibilityLabel");
@@ -1546,8 +1546,67 @@ function toggleTrackRatingVisibility() {
         label.classList.add("visible-others");
       }
     }
+
+    // Save visibility to Firebase
+    await saveTrackRatingVisibility(!isPrivate);
   } catch (e) {
     console.error("Error in toggleTrackRatingVisibility:", e);
+  }
+}
+
+// Save track rating visibility to Firebase independently
+async function saveTrackRatingVisibility(isVisible) {
+  if (!db || !currentUser || !currentRatingContext) return;
+
+  const { albumId, track, currentRatings } = currentRatingContext;
+  const trackKey = `${track.position}-${track.title}`;
+  const userEmail = currentUser.email;
+
+  // Clone current ratings
+  const updatedRatings = { ...currentRatings };
+  const userRating = updatedRatings[userEmail] || {};
+  const newUserRating = { ...userRating };
+
+  // Initialize ratingsVisible object if it doesn't exist
+  if (!newUserRating.ratingsVisible) {
+    newUserRating.ratingsVisible = {};
+  }
+
+  // Set the visibility for this track
+  newUserRating.ratingsVisible[trackKey] = isVisible;
+
+  // Update user rating
+  updatedRatings[userEmail] = newUserRating;
+
+  try {
+    await db.collection("albums").doc(albumId).update({
+      trackRatings: updatedRatings,
+    });
+
+    // Update in-memory context
+    if (currentRatingContext) {
+      currentRatingContext.currentRatings = updatedRatings;
+
+      // Update album in window.currentAlbums
+      if (window.currentAlbums) {
+        const albumIndex = window.currentAlbums.findIndex(
+          (a) => a.id === albumId,
+        );
+        if (albumIndex !== -1) {
+          window.currentAlbums[albumIndex].trackRatings = updatedRatings;
+        }
+      }
+    }
+
+    // Reload albums to reflect change
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+    loadAlbums(monthKey);
+
+    console.log("Track rating visibility saved:", isVisible);
+  } catch (error) {
+    console.error("Error saving track rating visibility:", error);
   }
 }
 
@@ -3030,54 +3089,42 @@ function updateAlbums(albums) {
           }
         });
 
-        // (note indicator removed — overlay on avatars handles per-user notes)
-
-        // If current user has a visible note for this track but hasn't rated it,
-        // show their avatar with the note overlay so they see their note marker.
+        // Show users with visible notes who haven't left a rating
+        // This includes both the current user and other users
         try {
-          if (currentUser && currentUser.email) {
-            const myRating = trackRatings[currentUser.email];
-            let iRated = false;
-            if (myRating) {
-              if (
-                myRating.ratings &&
-                myRating.ratings[trackKey] !== undefined
-              ) {
-                iRated = true;
-              }
-              if (
-                myRating.favorite === trackKey ||
-                myRating.leastFavorite === trackKey ||
-                (myRating.liked && myRating.liked.includes(trackKey)) ||
-                (myRating.disliked && myRating.disliked.includes(trackKey))
-              ) {
-                iRated = true;
-              }
-            }
+          // Track which users already have indicators from ratings
+          const usersWithRatingIndicators = new Set();
+          ratingsContainer.querySelectorAll('[data-user-email]').forEach(el => {
+            usersWithRatingIndicators.add(el.dataset.userEmail);
+          });
 
-            // Check if current user's note is visible
-            let myHasVisibleNote = false;
-            if (
-              myRating &&
-              myRating.notes &&
-              myRating.notes[trackKey] &&
-              myRating.notes[trackKey].visible === true &&
-              myRating.notes[trackKey].text &&
-              myRating.notes[trackKey].text.trim() !== ""
-            ) {
-              myHasVisibleNote = true;
-            }
+          Object.entries(trackRatings).forEach(([userEmail, userRating]) => {
+            // Skip if user already has an indicator from their rating
+            if (usersWithRatingIndicators.has(userEmail)) return;
 
-            if (myHasVisibleNote && !iRated) {
-              // find participant info for current user
-              const me = window.currentParticipants?.find(
-                (p) => p.email === currentUser.email,
+            // Check if this user has a visible note for this track
+            let hasVisibleNote = false;
+            try {
+              hasVisibleNote = !!(
+                userRating.notes &&
+                userRating.notes[trackKey] &&
+                userRating.notes[trackKey].visible === true &&
+                userRating.notes[trackKey].text &&
+                userRating.notes[trackKey].text.trim() !== ""
               );
-              if (me) {
-                addRatingIndicator(ratingsContainer, null, me, true);
+            } catch (e) {
+              hasVisibleNote = false;
+            }
+
+            if (hasVisibleNote) {
+              const participant = window.currentParticipants?.find(
+                (p) => p.email === userEmail,
+              );
+              if (participant) {
+                addRatingIndicator(ratingsContainer, null, participant, true);
               }
             }
-          }
+          });
         } catch (e) {
           /* ignore */
         }
