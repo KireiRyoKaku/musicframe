@@ -1556,27 +1556,33 @@ async function toggleTrackRatingVisibility() {
 
 // Save track rating visibility to Firebase independently
 async function saveTrackRatingVisibility(isVisible) {
-  if (!db || !currentUser || !currentRatingContext) return;
+  console.log("[Visibility Save] Starting save, isVisible:", isVisible);
+  if (!db || !currentUser || !currentRatingContext) {
+    console.log("[Visibility Save] Missing context:", { db: !!db, currentUser: !!currentUser, currentRatingContext: !!currentRatingContext });
+    return;
+  }
 
   const { albumId, track, currentRatings } = currentRatingContext;
   const trackKey = `${track.position}-${track.title}`;
   const userEmail = currentUser.email;
+  console.log("[Visibility Save] Saving for track:", trackKey, "album:", albumId, "user:", userEmail);
 
-  // Clone current ratings
-  const updatedRatings = { ...currentRatings };
-  const userRating = updatedRatings[userEmail] || {};
-  const newUserRating = { ...userRating };
+  // Deep clone current ratings to ensure Firestore detects changes
+  const updatedRatings = JSON.parse(JSON.stringify(currentRatings || {}));
+  
+  // Ensure user rating object exists
+  if (!updatedRatings[userEmail]) {
+    updatedRatings[userEmail] = {};
+  }
 
-  // Initialize ratingsVisible object if it doesn't exist
-  if (!newUserRating.ratingsVisible) {
-    newUserRating.ratingsVisible = {};
+  // Ensure ratingsVisible object exists
+  if (!updatedRatings[userEmail].ratingsVisible) {
+    updatedRatings[userEmail].ratingsVisible = {};
   }
 
   // Set the visibility for this track
-  newUserRating.ratingsVisible[trackKey] = isVisible;
-
-  // Update user rating
-  updatedRatings[userEmail] = newUserRating;
+  updatedRatings[userEmail].ratingsVisible[trackKey] = isVisible;
+  console.log("[Visibility Save] New ratingsVisible:", updatedRatings[userEmail].ratingsVisible);
 
   try {
     await db.collection("albums").doc(albumId).update({
@@ -3022,6 +3028,11 @@ function updateAlbums(albums) {
             isPastMonth ||
             userRating.ratingsVisible?.[trackKey] === true;
 
+          // Debug logging for visibility
+          if (userRating.ratings && userRating.ratings[trackKey] !== undefined) {
+            console.log(`[TrackRating Debug] Track: "${trackKey}", User: ${userEmail}, Rating: ${userRating.ratings[trackKey]}, Visible: ${isRatingVisible}, ratingsVisible obj:`, userRating.ratingsVisible, `ratingsVisible[trackKey]:`, userRating.ratingsVisible?.[trackKey]);
+          }
+
           if (
             isRatingVisible &&
             userRating.ratings &&
@@ -3114,6 +3125,11 @@ function updateAlbums(albums) {
               );
             } catch (e) {
               hasVisibleNote = false;
+            }
+
+            // Debug logging for notes visibility
+            if (userRating.notes && userRating.notes[trackKey]) {
+              console.log(`[Notes Debug] Track: "${trackKey}", User: ${userEmail}, Note visible: ${userRating.notes[trackKey].visible}, Note text: "${userRating.notes[trackKey].text?.substring(0, 30)}...", hasVisibleNote computed: ${hasVisibleNote}`);
             }
 
             if (hasVisibleNote) {
