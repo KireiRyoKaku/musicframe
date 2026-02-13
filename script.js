@@ -2924,11 +2924,6 @@ function updateAlbums(albums) {
 
         // Check all users' ratings and notes for this track
         Object.entries(trackRatings).forEach(([userEmail, userRating]) => {
-          // Skip users who have hidden their rating for this track (unless it's the current user or past month)
-          if (userEmail !== currentUser?.email && !isPastMonth) {
-            if (userRating.ratingsVisible?.[trackKey] !== true) return;
-          }
-
           // Detect notes for this user on this track
           try {
             if (
@@ -2948,7 +2943,7 @@ function updateAlbums(albums) {
           let ratingType = null;
           let numericRating = null;
 
-          // Check old-style ratings
+          // Check old-style ratings (always visible - no visibility check needed)
           if (userRating.favorite === trackKey) {
             ratingType = "favorite";
           } else if (userRating.leastFavorite === trackKey) {
@@ -2962,8 +2957,14 @@ function updateAlbums(albums) {
             ratingType = "disliked";
           }
 
-          // Check new numeric rating
+          // Check new numeric rating (requires visibility check unless it's current user or past month)
+          const isRatingVisible =
+            userEmail === currentUser?.email ||
+            isPastMonth ||
+            userRating.ratingsVisible?.[trackKey] === true;
+
           if (
+            isRatingVisible &&
             userRating.ratings &&
             userRating.ratings[trackKey] !== undefined
           ) {
@@ -2989,7 +2990,7 @@ function updateAlbums(albums) {
               } catch (e) {
                 userHasNote = false;
               }
-              // Show old-style emoji if present
+              // Show old-style emoji if present (always visible)
               if (ratingType) {
                 addRatingIndicator(
                   ratingsContainer,
