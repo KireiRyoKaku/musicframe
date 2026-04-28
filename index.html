@@ -78,6 +78,16 @@
           <div class="title-container">
             <h1>Musicframe</h1>
             <p class="feature-tooltip" id="mainFeatureTooltip">Add albums</p>
+            <button
+              id="timerToggleBtn"
+              class="timer-toggle-btn"
+              type="button"
+              aria-expanded="false"
+              aria-controls="albumTimerPanel"
+            >
+              <span class="timer-toggle-icon" aria-hidden="true">⏱</span>
+              <span>Timer</span>
+            </button>
           </div>
 
           <!-- Navigation with Year/Month and Arrows -->
@@ -178,6 +188,86 @@
         <!-- Albums Section -->
         <section class="albums-section">
           <h2>This Month's Albums</h2>
+          <div id="albumTimerPanel" class="album-timer-panel is-collapsed" aria-label="Listening timer">
+            <div class="album-timer-controls">
+              <label class="album-timer-label" for="albumTimerMinutes"
+                >Timer</label
+              >
+              <input
+                type="number"
+                id="albumTimerMinutes"
+                class="album-timer-input"
+                min="1"
+                step="1"
+                value="60"
+                aria-label="Timer duration in minutes"
+              />
+              <span class="album-timer-unit">minutes</span>
+              <button id="albumTimerStartBtn" class="album-timer-btn" type="button">
+                Start
+              </button>
+              <button
+                id="albumTimerResetBtn"
+                class="album-timer-btn album-timer-btn-secondary"
+                type="button"
+              >
+                Reset
+              </button>
+              <button
+                id="albumTimerAlignLeftBtn"
+                class="album-timer-btn album-timer-btn-secondary"
+                type="button"
+              >
+                &lsaquo;
+              </button>
+              <button
+                id="albumTimerAlignRightBtn"
+                class="album-timer-btn album-timer-btn-secondary"
+                type="button"
+              >
+                &rsaquo;
+              </button>
+            </div>
+            <div class="album-timer-readout-row">
+              <p class="album-timer-readout" id="albumTimerReadout">60:00</p>
+              <p class="album-timer-phase" id="albumTimerPhase">Album 1</p>
+            </div>
+            <div class="album-timer-line" aria-hidden="true">
+              <div class="album-timer-line-track"></div>
+              <div class="album-timer-line-progress" id="albumTimerProgress"></div>
+              <div class="album-timer-marker album-timer-marker-1"></div>
+              <div class="album-timer-marker album-timer-marker-2"></div>
+              <div class="album-timer-marker album-timer-marker-3"></div>
+              <svg
+                class="album-timer-ring"
+                id="albumTimerRing"
+                viewBox="0 0 120 120"
+                aria-hidden="true"
+              >
+                <path class="album-timer-ring-segment" data-ring-segment="0"></path>
+                <path class="album-timer-ring-segment" data-ring-segment="1"></path>
+                <path class="album-timer-ring-segment" data-ring-segment="2"></path>
+                <path class="album-timer-ring-segment" data-ring-segment="3"></path>
+                <line class="album-timer-ring-divider" data-ring-divider="0"></line>
+                <line class="album-timer-ring-divider" data-ring-divider="1"></line>
+                <line class="album-timer-ring-divider" data-ring-divider="2"></line>
+                <line class="album-timer-ring-divider" data-ring-divider="3"></line>
+                <circle
+                  class="album-timer-ring-progress"
+                  id="albumTimerRingProgress"
+                  cx="60"
+                  cy="60"
+                  r="44"
+                ></circle>
+              </svg>
+            </div>
+            <div class="album-timer-segments">
+              <span class="album-timer-segment" data-segment="0">Album 1</span>
+              <span class="album-timer-segment" data-segment="1">Album 2</span>
+              <span class="album-timer-segment" data-segment="2">Album 3</span>
+              <span class="album-timer-segment" data-segment="3">Voting</span>
+            </div>
+          </div>
           <div style="text-align: center; margin: 20px 0">
             <button id="addAlbumBtn" class="join-discussion-btn">
               + Add Your Album

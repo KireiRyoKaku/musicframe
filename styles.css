@@ -452,6 +452,39 @@ body {
   text-align: center;
 }
 
+.timer-toggle-btn {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(31, 41, 55, 0.95);
+  color: #e5e7eb;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.timer-toggle-btn:hover {
+  background: rgba(55, 65, 81, 0.98);
+  border-color: rgba(99, 102, 241, 0.58);
+  transform: translateY(-1px);
+}
+
+.timer-toggle-btn.is-active {
+  border-color: rgba(99, 102, 241, 0.72);
+  box-shadow: 0 8px 22px rgba(99, 102, 241, 0.28);
+}
+
+.timer-toggle-icon {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
 /* Navigation */
 .month-navigation {
   display: flex;
@@ -729,6 +762,400 @@ body {
   letter-spacing: 2px;
 }
 
+.album-timer-panel {
+  width: min(840px, 100%);
+  margin: 0 auto 28px;
+  padding: 12px 16px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  transition:
+    width 0.25s ease,
+    padding 0.25s ease,
+    transform 0.25s ease,
+    opacity 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.album-timer-panel.is-collapsed {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin: 0 auto;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+.album-timer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.album-timer-label,
+.album-timer-unit {
+  font-size: 0.74rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a0a0a0;
+}
+
+.album-timer-input {
+  width: 72px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e0e0e0;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.album-timer-input:focus {
+  outline: none;
+  border-color: rgba(102, 126, 234, 0.8);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.16);
+}
+
+.album-timer-btn {
+  min-width: 92px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow:
+    0 8px 25px rgba(102, 126, 234, 0.4),
+    0 4px 10px rgba(102, 126, 234, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.album-timer-btn:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:
+    0 12px 35px rgba(102, 126, 234, 0.5),
+    0 6px 15px rgba(102, 126, 234, 0.3);
+}
+
+.album-timer-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.album-timer-btn:active:not(:disabled) {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.album-timer-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+
+.album-timer-btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.album-timer-btn-secondary.is-active {
+  border-color: rgba(102, 126, 234, 0.9);
+  background: rgba(102, 126, 234, 0.25);
+}
+
+#albumTimerAlignLeftBtn,
+#albumTimerAlignRightBtn {
+  display: none;
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+  font-weight: 600;
+  text-indent: 0;
+  background: #1f2937;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+#albumTimerAlignLeftBtn:hover:not(:disabled),
+#albumTimerAlignRightBtn:hover:not(:disabled) {
+  background: #374151;
+}
+
+.album-timer-readout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.album-timer-readout {
+  font-size: clamp(1.05rem, 1.6vw, 1.4rem);
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.album-timer-phase {
+  font-size: 0.72rem;
+  color: #a0a0a0;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.album-timer-line {
+  position: relative;
+  margin-top: 8px;
+  height: 10px;
+}
+
+.album-timer-line-track,
+.album-timer-line-progress {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 4px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+}
+
+.album-timer-line-track {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.album-timer-line-progress {
+  width: 0%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 0 18px rgba(102, 126, 234, 0.32);
+  transition:
+    width 0.8s linear,
+    background 0.28s ease,
+    box-shadow 0.28s ease;
+}
+
+.album-timer-marker {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #0f0f0f;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+}
+
+.album-timer-marker-1 {
+  left: 32%;
+}
+
+.album-timer-marker-2 {
+  left: 64%;
+}
+
+.album-timer-marker-3 {
+  left: 96%;
+}
+
+.album-timer-segments {
+  display: grid;
+  grid-template-columns: 32fr 32fr 32fr 4fr;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.album-timer-segment {
+  --segment-color: #b9c3ff;
+  display: inline-flex;
+  justify-content: center;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.album-timer-segment.is-active,
+.album-timer-segment.is-complete {
+  color: var(--segment-color);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.album-timer-segment.is-complete {
+  color: var(--segment-color);
+}
+
+.album-timer-panel.is-floating {
+  position: fixed;
+  top: 86px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 40px));
+  margin: 0;
+  z-index: 120;
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.42);
+}
+
+.album-timer-panel.is-floating.is-side-docked {
+  top: auto;
+  left: auto;
+  right: 32px;
+  bottom: 92px;
+  transform: none;
+  width: 170px;
+  height: 170px;
+  min-width: 170px;
+  max-width: 170px;
+  min-height: 170px;
+  max-height: 170px;
+  padding: 0;
+  border-radius: 50%;
+  border-color: rgba(102, 126, 234, 0.28);
+  background: rgba(15, 15, 15, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.album-timer-panel.is-floating.is-side-docked.is-docked-left {
+  left: 32px;
+  right: auto;
+}
+
+.album-timer-panel.is-floating.is-side-docked.is-docked-right {
+  left: auto;
+  right: 32px;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-label,
+.album-timer-panel.is-floating.is-side-docked .album-timer-unit,
+.album-timer-panel.is-floating.is-side-docked .album-timer-marker,
+.album-timer-panel.is-floating.is-side-docked #albumTimerStartBtn,
+.album-timer-panel.is-floating.is-side-docked #albumTimerResetBtn,
+.album-timer-panel.is-floating.is-side-docked #albumTimerMinutes {
+  display: none;
+}
+
+.album-timer-panel.is-floating.is-side-docked #albumTimerAlignLeftBtn,
+.album-timer-panel.is-floating.is-side-docked #albumTimerAlignRightBtn {
+  display: inline-grid;
+  place-items: center;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-controls {
+  position: absolute;
+  top: auto;
+  left: 50%;
+  bottom: -30px;
+  transform: translateX(-50%);
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 0;
+  width: max-content;
+  z-index: 4;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-btn {
+  min-width: 56px;
+  padding: 6px 8px;
+  font-size: 0.68rem;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-readout-row {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-readout {
+  font-size: 0.98rem;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-phase {
+  display: none;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-line {
+  width: 100%;
+  height: 100%;
+  margin-top: 0;
+  position: relative;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-line-track,
+.album-timer-panel.is-floating.is-side-docked .album-timer-line-progress {
+  display: none;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.album-timer-ring {
+  display: none;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-ring-segment {
+  fill: none;
+  stroke: rgba(156, 170, 242, 0.42);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-ring-divider {
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-ring-progress {
+  fill: none;
+  stroke: rgba(103, 131, 255, 0.98);
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-dasharray: 276.46;
+  stroke-dashoffset: 276.46;
+  transform: rotate(-90deg);
+  transform-origin: 60px 60px;
+  transition: stroke-dashoffset 0.8s linear;
+  filter: drop-shadow(0 0 8px rgba(102, 126, 234, 0.28));
+}
+
+.album-timer-panel.is-floating.is-side-docked .album-timer-segments {
+  display: none;
+}
+
 .albums-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 350px));
@@ -749,6 +1176,85 @@ body {
 @media (min-width: 769px) {
   .albums-grid {
     padding: 40px 0 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .album-timer-panel {
+    padding: 10px 10px 9px;
+  }
+
+  .album-timer-controls {
+    justify-content: center;
+  }
+
+  .album-timer-input,
+  .album-timer-btn {
+    min-width: 82px;
+  }
+
+  .album-timer-readout-row {
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
+  }
+
+  .album-timer-segments {
+    gap: 6px;
+  }
+
+  .album-timer-segment {
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+  }
+
+  .album-timer-panel.is-floating {
+    top: 72px;
+    width: calc(100vw - 18px);
+  }
+
+  .album-timer-panel.is-floating.is-side-docked {
+    top: auto;
+    right: 16px;
+    bottom: 90px;
+    width: 150px;
+    height: 150px;
+    min-width: 150px;
+    max-width: 150px;
+    min-height: 150px;
+    max-height: 150px;
+  }
+
+  .album-timer-panel.is-floating.is-side-docked.is-docked-left {
+    left: 16px;
+    right: auto;
+  }
+
+  .album-timer-panel.is-floating.is-side-docked.is-docked-right {
+    left: auto;
+    right: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .album-timer-readout-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .album-timer-panel.is-floating.is-side-docked {
+    width: 132px;
+    height: 132px;
+    min-width: 132px;
+    max-width: 132px;
+    min-height: 132px;
+    max-height: 132px;
+  }
+
+  .album-timer-panel.is-floating.is-side-docked .album-timer-controls {
+    top: auto;
+    bottom: -24px;
   }
 }
 

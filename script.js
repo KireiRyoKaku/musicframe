@@ -106,6 +106,41 @@ const monthData = {
 let currentDate = new Date();
 let currentUser = null;
 
+const ALBUM_TIMER_STORAGE_KEY = "albumTimerState";
+const ALBUM_TIMER_SEGMENTS = [32, 32, 32, 4];
+const ALBUM_TIMER_PHASE_LABELS = ["Album 1", "Album 2", "Album 3", "Voting"];
+const ALBUM_TIMER_SECTION_COLORS = [
+  {
+    solid: "#6783ff",
+    gradient: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    glow: "rgba(102, 126, 234, 0.32)",
+  },
+  {
+    solid: "#00b8ff",
+    gradient: "linear-gradient(135deg, #00b8ff 0%, #00f2fe 100%)",
+    glow: "rgba(0, 184, 255, 0.32)",
+  },
+  {
+    solid: "#22c55e",
+    gradient: "linear-gradient(135deg, #22c55e 0%, #14b8a6 100%)",
+    glow: "rgba(34, 197, 94, 0.3)",
+  },
+  {
+    solid: "#ef4444",
+    gradient: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+    glow: "rgba(239, 68, 68, 0.34)",
+  },
+];
+let albumTimerInterval = null;
+let albumTimerState = {
+  totalSeconds: 60 * 60,
+  remainingSeconds: 60 * 60,
+  isRunning: false,
+  endTimestamp: null,
+  isExpanded: false,
+  dockSide: "right",
+};
+
 // Initialize global participants array to prevent undefined errors
 window.currentParticipants = [];
 
@@ -647,6 +682,387 @@ async function init() {
   }
 
   setupEventListeners();
+  initializeAlbumTimer();
+}
+
+function getAlbumTimerRefs() {
+  return {
+    panel: document.querySelector(".album-timer-panel"),
+    toggleBtn: document.getElementById("timerToggleBtn"),
+    minutesInput: document.getElementById("albumTimerMinutes"),
+    startBtn: document.getElementById("albumTimerStartBtn"),
+    resetBtn: document.getElementById("albumTimerResetBtn"),
+    alignLeftBtn: document.getElementById("albumTimerAlignLeftBtn"),
+    alignRightBtn: document.getElementById("albumTimerAlignRightBtn"),
+    readout: document.getElementById("albumTimerReadout"),
+    phase: document.getElementById("albumTimerPhase"),
+    progress: document.getElementById("albumTimerProgress"),
+    ringProgress: document.getElementById("albumTimerRingProgress"),
+    ringSegments: document.querySelectorAll(".album-timer-ring-segment"),
+    segmentLabels: document.querySelectorAll(".album-timer-segment"),
+  };
+}
+
+function initializeAlbumTimer() {
+  const refs = getAlbumTimerRefs();
+  if (!refs.minutesInput || !refs.startBtn) {
+    return;
+  }
+
+  restoreAlbumTimerState();
+  initializeAlbumTimerRing();
+  syncAlbumTimerWithClock();
+  renderAlbumTimer();
+
+  refs.minutesInput.addEventListener("change", handleAlbumTimerDurationChange);
+  refs.startBtn.addEventListener("click", startAlbumTimer);
+  refs.resetBtn?.addEventListener("click", resetAlbumTimer);
+  refs.toggleBtn?.addEventListener("click", toggleAlbumTimerPanel);
+  refs.alignLeftBtn?.addEventListener("click", () => setAlbumTimerDockSide("left"));
+  refs.alignRightBtn?.addEventListener("click", () =>
+    setAlbumTimerDockSide("right"),
+  );
+  window.addEventListener("scroll", updateAlbumTimerFloatingState, {
+    passive: true,
+  });
+  window.addEventListener("resize", updateAlbumTimerFloatingState);
+}
+
+function restoreAlbumTimerState() {
+  try {
+    const storedState = localStorage.getItem(ALBUM_TIMER_STORAGE_KEY);
+    if (!storedState) {
+      return;
+    }
+
+    const parsedState = JSON.parse(storedState);
+    if (!parsedState || Number(parsedState.totalSeconds) <= 0) {
+      return;
+    }
+
+    albumTimerState = {
+      totalSeconds: Math.max(60, Math.round(Number(parsedState.totalSeconds))),
+      remainingSeconds: Math.max(
+        0,
+        Math.min(
+          Math.round(Number(parsedState.remainingSeconds)),
+          Math.max(60, Math.round(Number(parsedState.totalSeconds))),
+        ),
+      ),
+      isRunning: Boolean(parsedState.isRunning),
+      endTimestamp: parsedState.endTimestamp || null,
+      isExpanded: Boolean(parsedState.isExpanded),
+      dockSide: parsedState.dockSide === "left" ? "left" : "right",
+    };
+
+    if (albumTimerState.isRunning) {
+      albumTimerState.isExpanded = true;
+    }
+  } catch (error) {
+    console.warn("Failed to restore timer state", error);
+  }
+}
+
+function persistAlbumTimerState() {
+  try {
+    localStorage.setItem(
+      ALBUM_TIMER_STORAGE_KEY,
+      JSON.stringify(albumTimerState),
+    );
+  } catch (error) {
+    console.warn("Failed to persist timer state", error);
+  }
+}
+
+function handleAlbumTimerDurationChange() {
+  const refs = getAlbumTimerRefs();
+  if (!refs.minutesInput) {
+    return;
+  }
+
+  const minutes = Math.max(1, Number.parseInt(refs.minutesInput.value, 10) || 60);
+  refs.minutesInput.value = String(minutes);
+  albumTimerState.totalSeconds = minutes * 60;
+  albumTimerState.remainingSeconds = minutes * 60;
+  albumTimerState.isRunning = false;
+  albumTimerState.endTimestamp = null;
+  stopAlbumTimerInterval();
+  persistAlbumTimerState();
+  renderAlbumTimer();
+}
+
+function syncAlbumTimerWithClock() {
+  if (!albumTimerState.isRunning || !albumTimerState.endTimestamp) {
+    stopAlbumTimerInterval();
+    return;
+  }
+
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((albumTimerState.endTimestamp - Date.now()) / 1000),
+  );
+  albumTimerState.remainingSeconds = remainingSeconds;
+
+  if (remainingSeconds === 0) {
+    albumTimerState.isRunning = false;
+    albumTimerState.endTimestamp = null;
+    stopAlbumTimerInterval();
+    persistAlbumTimerState();
+    renderAlbumTimer();
+    return;
+  }
+
+  if (!albumTimerInterval) {
+    albumTimerInterval = window.setInterval(() => {
+      syncAlbumTimerWithClock();
+      renderAlbumTimer();
+    }, 1000);
+  }
+}
+
+function stopAlbumTimerInterval() {
+  if (albumTimerInterval) {
+    window.clearInterval(albumTimerInterval);
+    albumTimerInterval = null;
+  }
+}
+
+function startAlbumTimer() {
+  if (albumTimerState.isRunning) {
+    return;
+  }
+
+  const refs = getAlbumTimerRefs();
+  const minutes = Math.max(1, Number.parseInt(refs.minutesInput?.value, 10) || 60);
+  if (albumTimerState.remainingSeconds <= 0 || albumTimerState.totalSeconds !== minutes * 60) {
+    albumTimerState.totalSeconds = minutes * 60;
+    albumTimerState.remainingSeconds = minutes * 60;
+  }
+
+  albumTimerState.isRunning = true;
+  albumTimerState.isExpanded = true;
+  albumTimerState.endTimestamp = Date.now() + albumTimerState.remainingSeconds * 1000;
+  persistAlbumTimerState();
+  syncAlbumTimerWithClock();
+  renderAlbumTimer();
+}
+
+function pauseAlbumTimer() {
+  if (!albumTimerState.isRunning) {
+    return;
+  }
+
+  syncAlbumTimerWithClock();
+  albumTimerState.isRunning = false;
+  albumTimerState.endTimestamp = null;
+  stopAlbumTimerInterval();
+  persistAlbumTimerState();
+  renderAlbumTimer();
+}
+
+function resetAlbumTimer() {
+  const refs = getAlbumTimerRefs();
+  const minutes = Math.max(1, Number.parseInt(refs.minutesInput?.value, 10) || 60);
+  albumTimerState.totalSeconds = minutes * 60;
+  albumTimerState.remainingSeconds = minutes * 60;
+  albumTimerState.isRunning = false;
+  albumTimerState.endTimestamp = null;
+  stopAlbumTimerInterval();
+  persistAlbumTimerState();
+  renderAlbumTimer();
+}
+
+function renderAlbumTimer() {
+  const refs = getAlbumTimerRefs();
+  if (!refs.minutesInput || !refs.readout || !refs.phase || !refs.progress) {
+    return;
+  }
+
+  if (refs.panel) {
+    refs.panel.classList.toggle("is-collapsed", !albumTimerState.isExpanded);
+  }
+
+  if (refs.toggleBtn) {
+    refs.toggleBtn.classList.toggle("is-active", albumTimerState.isExpanded);
+    refs.toggleBtn.setAttribute("aria-expanded", String(albumTimerState.isExpanded));
+  }
+
+  refs.minutesInput.value = String(Math.max(1, Math.round(albumTimerState.totalSeconds / 60)));
+  refs.minutesInput.disabled = albumTimerState.isRunning;
+  refs.readout.textContent = formatTimerSeconds(albumTimerState.remainingSeconds);
+
+  const elapsedSeconds = Math.max(
+    0,
+    albumTimerState.totalSeconds - albumTimerState.remainingSeconds,
+  );
+  const progressPercent =
+    albumTimerState.totalSeconds > 0
+      ? Math.min(100, (elapsedSeconds / albumTimerState.totalSeconds) * 100)
+      : 0;
+  refs.progress.style.width = `${progressPercent}%`;
+
+  const segmentIndex = getAlbumTimerSegmentIndex(progressPercent);
+  const activeSectionColor = getAlbumTimerSectionColor(segmentIndex);
+  refs.progress.style.background = activeSectionColor.gradient;
+  refs.progress.style.boxShadow = `0 0 18px ${activeSectionColor.glow}`;
+
+  if (refs.ringProgress) {
+    const circumference = Number.parseFloat(
+      refs.ringProgress.dataset.circumference || "0",
+    );
+    refs.ringProgress.style.stroke = activeSectionColor.solid;
+    refs.ringProgress.style.filter = `drop-shadow(0 0 8px ${activeSectionColor.glow})`;
+    if (circumference > 0) {
+      refs.ringProgress.style.strokeDashoffset = String(
+        circumference * (1 - progressPercent / 100),
+      );
+    }
+  }
+
+  refs.phase.textContent =
+    progressPercent >= 100 ? "Voting complete" : ALBUM_TIMER_PHASE_LABELS[segmentIndex];
+
+  refs.segmentLabels.forEach((segmentLabel, index) => {
+    segmentLabel.style.setProperty(
+      "--segment-color",
+      getAlbumTimerSectionColor(index).solid,
+    );
+    segmentLabel.classList.toggle("is-active", index === segmentIndex && progressPercent < 100);
+    segmentLabel.classList.toggle(
+      "is-complete",
+      progressPercent >= getAlbumTimerSegmentEnd(index),
+    );
+  });
+
+  refs.startBtn.disabled = albumTimerState.isRunning;
+  if (refs.resetBtn) {
+    refs.resetBtn.disabled = false;
+  }
+
+  updateAlbumTimerFloatingState();
+}
+
+function updateAlbumTimerFloatingState() {
+  const refs = getAlbumTimerRefs();
+  if (!refs.panel) {
+    return;
+  }
+
+  const shouldFloat = albumTimerState.isRunning && albumTimerState.isExpanded;
+  refs.panel.classList.toggle("is-floating", shouldFloat);
+
+  if (!shouldFloat) {
+    refs.panel.classList.remove("is-side-docked");
+    refs.panel.classList.remove("is-docked-left", "is-docked-right");
+    return;
+  }
+
+  const shouldDockToSide = window.scrollY > 140;
+  refs.panel.classList.toggle("is-side-docked", shouldDockToSide);
+  refs.panel.classList.toggle(
+    "is-docked-left",
+    shouldDockToSide && albumTimerState.dockSide === "left",
+  );
+  refs.panel.classList.toggle(
+    "is-docked-right",
+    shouldDockToSide && albumTimerState.dockSide !== "left",
+  );
+
+  refs.alignLeftBtn?.classList.toggle("is-active", albumTimerState.dockSide === "left");
+  refs.alignRightBtn?.classList.toggle(
+    "is-active",
+    albumTimerState.dockSide !== "left",
+  );
+}
+
+function toggleAlbumTimerPanel() {
+  albumTimerState.isExpanded = !albumTimerState.isExpanded;
+  persistAlbumTimerState();
+  renderAlbumTimer();
+}
+
+function setAlbumTimerDockSide(side) {
+  albumTimerState.dockSide = side === "left" ? "left" : "right";
+  persistAlbumTimerState();
+  updateAlbumTimerFloatingState();
+}
+
+function getAlbumTimerSegmentIndex(progressPercent) {
+  let accumulatedPercent = 0;
+  for (let index = 0; index < ALBUM_TIMER_SEGMENTS.length; index++) {
+    accumulatedPercent += ALBUM_TIMER_SEGMENTS[index];
+    if (progressPercent < accumulatedPercent || index === ALBUM_TIMER_SEGMENTS.length - 1) {
+      return index;
+    }
+  }
+  return ALBUM_TIMER_SEGMENTS.length - 1;
+}
+
+function getAlbumTimerSegmentEnd(index) {
+  return ALBUM_TIMER_SEGMENTS.slice(0, index + 1).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+}
+
+function getAlbumTimerSectionColor(segmentIndex) {
+  return (
+    ALBUM_TIMER_SECTION_COLORS[segmentIndex] ||
+    ALBUM_TIMER_SECTION_COLORS[ALBUM_TIMER_SECTION_COLORS.length - 1]
+  );
+}
+
+function formatTimerSeconds(totalSeconds) {
+  const safeSeconds = Math.max(0, totalSeconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function initializeAlbumTimerRing() {
+  const refs = getAlbumTimerRefs();
+  if (!refs.ringProgress || refs.ringSegments.length !== 4) {
+    return;
+  }
+
+  const radius = Number.parseFloat(refs.ringProgress.getAttribute("r") || "44");
+  const circumference = 2 * Math.PI * radius;
+  refs.ringProgress.dataset.circumference = String(circumference);
+  refs.ringProgress.style.strokeDasharray = String(circumference);
+  refs.ringProgress.style.strokeDashoffset = String(circumference);
+
+  buildAlbumTimerRingSegments(refs.ringSegments, ALBUM_TIMER_SEGMENTS, radius);
+}
+
+function buildAlbumTimerRingSegments(segmentEls, percentages, radius) {
+  const center = 60;
+  const gapDegrees = 1.2;
+  let startAngle = -90;
+
+  segmentEls.forEach((segmentEl, index) => {
+    const segmentDegrees = percentages[index] * 3.6;
+    const segmentStart = startAngle + gapDegrees / 2;
+    const segmentEnd = startAngle + segmentDegrees - gapDegrees / 2;
+
+    segmentEl.setAttribute("d", describeSvgArc(center, center, radius, segmentStart, segmentEnd));
+    startAngle += segmentDegrees;
+  });
+}
+
+function describeSvgArc(cx, cy, r, startAngle, endAngle) {
+  const start = polarToCartesian(cx, cy, r, startAngle);
+  const end = polarToCartesian(cx, cy, r, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+}
+
+function polarToCartesian(cx, cy, r, angleDegrees) {
+  const angleRadians = (angleDegrees * Math.PI) / 180;
+  return {
+    x: cx + r * Math.cos(angleRadians),
+    y: cy + r * Math.sin(angleRadians),
+  };
 }
 
 // Setup event listeners
