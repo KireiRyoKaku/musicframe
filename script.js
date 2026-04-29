@@ -6690,9 +6690,9 @@ function updateVoteBestAlbumButton() {
       });
 
     if (allRevealed) {
-      btn.textContent = "🏆 Voting Ended";
-      btn.disabled = true;
-      btn.classList.add("joined"); // reuse the greyed-out style
+      btn.textContent = "🏆 Show Score";
+      btn.disabled = false;
+      btn.classList.remove("joined");
     } else {
       btn.textContent = allVoted ? "🏆 Reveal Winner" : "🏆 Vote Best Album";
       btn.disabled = false;
@@ -6756,69 +6756,77 @@ async function voteBestAlbum() {
     return;
   }
 
-  // Confirm before revealing
-  const confirmed = await showCustomConfirm(
-    "This will reveal all track and album ratings to everyone. Continue?",
-  );
-  if (!confirmed) return;
+  // If already revealed, just show scores. Otherwise reveal first.
+  const allRevealed = albums.every((album) => {
+    const visMap = album.albumRatingsVisible || {};
+    return participants.every((p) => visMap[p.email] === true);
+  });
 
-  // Make all album ratings visible and all track ratings visible
-  try {
-    for (const album of albums) {
-      const updates = {};
+  if (!allRevealed) {
+    // Confirm before revealing
+    const confirmed = await showCustomConfirm(
+      "This will reveal all track and album ratings to everyone. Continue?",
+    );
+    if (!confirmed) return;
 
-      // Make all album ratings visible
-      const albumRatingsVisible = { ...(album.albumRatingsVisible || {}) };
-      for (const participant of participants) {
-        albumRatingsVisible[participant.email] = true;
-      }
-      updates.albumRatingsVisible = albumRatingsVisible;
+    // Make all album ratings visible and all track ratings visible
+    try {
+      for (const album of albums) {
+        const updates = {};
 
-      // Make all track ratings visible
-      const trackRatings = { ...(album.trackRatings || {}) };
-      let trackRatingsChanged = false;
-      for (const participant of participants) {
-        const userRating = trackRatings[participant.email];
-        if (userRating && userRating.ratings) {
-          const ratingsVisible = { ...(userRating.ratingsVisible || {}) };
-          const tracks = Object.keys(userRating.ratings);
-          for (const trackKey of tracks) {
-            if (ratingsVisible[trackKey] !== true) {
-              ratingsVisible[trackKey] = true;
-              trackRatingsChanged = true;
+        // Make all album ratings visible
+        const albumRatingsVisible = { ...(album.albumRatingsVisible || {}) };
+        for (const participant of participants) {
+          albumRatingsVisible[participant.email] = true;
+        }
+        updates.albumRatingsVisible = albumRatingsVisible;
+
+        // Make all track ratings visible
+        const trackRatings = { ...(album.trackRatings || {}) };
+        let trackRatingsChanged = false;
+        for (const participant of participants) {
+          const userRating = trackRatings[participant.email];
+          if (userRating && userRating.ratings) {
+            const ratingsVisible = { ...(userRating.ratingsVisible || {}) };
+            const tracks = Object.keys(userRating.ratings);
+            for (const trackKey of tracks) {
+              if (ratingsVisible[trackKey] !== true) {
+                ratingsVisible[trackKey] = true;
+                trackRatingsChanged = true;
+              }
             }
+            trackRatings[participant.email] = {
+              ...userRating,
+              ratingsVisible,
+            };
           }
-          trackRatings[participant.email] = {
-            ...userRating,
-            ratingsVisible,
-          };
         }
-      }
-      if (trackRatingsChanged) {
-        updates.trackRatings = trackRatings;
-      }
-
-      // Persist official voting-ended state on each album doc.
-      updates.votingEnded = true;
-
-      await db.collection("albums").doc(album.id).update(updates);
-
-      // Update in-memory
-      const idx = window.currentAlbums.findIndex((a) => a.id === album.id);
-      if (idx !== -1) {
-        window.currentAlbums[idx].albumRatingsVisible = albumRatingsVisible;
         if (trackRatingsChanged) {
-          window.currentAlbums[idx].trackRatings = trackRatings;
+          updates.trackRatings = trackRatings;
         }
-        window.currentAlbums[idx].votingEnded = true;
-      }
-    }
 
-    window.votingEnded = true;
-  } catch (e) {
-    console.error("Error revealing ratings:", e);
-    await showCustomAlert("Error revealing ratings. Please try again.");
-    return;
+        // Persist official voting-ended state on each album doc.
+        updates.votingEnded = true;
+
+        await db.collection("albums").doc(album.id).update(updates);
+
+        // Update in-memory
+        const idx = window.currentAlbums.findIndex((a) => a.id === album.id);
+        if (idx !== -1) {
+          window.currentAlbums[idx].albumRatingsVisible = albumRatingsVisible;
+          if (trackRatingsChanged) {
+            window.currentAlbums[idx].trackRatings = trackRatings;
+          }
+          window.currentAlbums[idx].votingEnded = true;
+        }
+      }
+
+      window.votingEnded = true;
+    } catch (e) {
+      console.error("Error revealing ratings:", e);
+      await showCustomAlert("Error revealing ratings. Please try again.");
+      return;
+    }
   }
 
   // Compute results: mean of all participant album ratings per album
