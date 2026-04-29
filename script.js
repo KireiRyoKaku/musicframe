@@ -718,7 +718,9 @@ function initializeAlbumTimer() {
   refs.startBtn.addEventListener("click", startAlbumTimer);
   refs.resetBtn?.addEventListener("click", resetAlbumTimer);
   refs.toggleBtn?.addEventListener("click", toggleAlbumTimerPanel);
-  refs.alignLeftBtn?.addEventListener("click", () => setAlbumTimerDockSide("left"));
+  refs.alignLeftBtn?.addEventListener("click", () =>
+    setAlbumTimerDockSide("left"),
+  );
   refs.alignRightBtn?.addEventListener("click", () =>
     setAlbumTimerDockSide("right"),
   );
@@ -780,7 +782,10 @@ function handleAlbumTimerDurationChange() {
     return;
   }
 
-  const minutes = Math.max(1, Number.parseInt(refs.minutesInput.value, 10) || 60);
+  const minutes = Math.max(
+    1,
+    Number.parseInt(refs.minutesInput.value, 10) || 60,
+  );
   refs.minutesInput.value = String(minutes);
   albumTimerState.totalSeconds = minutes * 60;
   albumTimerState.remainingSeconds = minutes * 60;
@@ -833,15 +838,22 @@ function startAlbumTimer() {
   }
 
   const refs = getAlbumTimerRefs();
-  const minutes = Math.max(1, Number.parseInt(refs.minutesInput?.value, 10) || 60);
-  if (albumTimerState.remainingSeconds <= 0 || albumTimerState.totalSeconds !== minutes * 60) {
+  const minutes = Math.max(
+    1,
+    Number.parseInt(refs.minutesInput?.value, 10) || 60,
+  );
+  if (
+    albumTimerState.remainingSeconds <= 0 ||
+    albumTimerState.totalSeconds !== minutes * 60
+  ) {
     albumTimerState.totalSeconds = minutes * 60;
     albumTimerState.remainingSeconds = minutes * 60;
   }
 
   albumTimerState.isRunning = true;
   albumTimerState.isExpanded = true;
-  albumTimerState.endTimestamp = Date.now() + albumTimerState.remainingSeconds * 1000;
+  albumTimerState.endTimestamp =
+    Date.now() + albumTimerState.remainingSeconds * 1000;
   persistAlbumTimerState();
   syncAlbumTimerWithClock();
   renderAlbumTimer();
@@ -862,7 +874,10 @@ function pauseAlbumTimer() {
 
 function resetAlbumTimer() {
   const refs = getAlbumTimerRefs();
-  const minutes = Math.max(1, Number.parseInt(refs.minutesInput?.value, 10) || 60);
+  const minutes = Math.max(
+    1,
+    Number.parseInt(refs.minutesInput?.value, 10) || 60,
+  );
   albumTimerState.totalSeconds = minutes * 60;
   albumTimerState.remainingSeconds = minutes * 60;
   albumTimerState.isRunning = false;
@@ -884,12 +899,19 @@ function renderAlbumTimer() {
 
   if (refs.toggleBtn) {
     refs.toggleBtn.classList.toggle("is-active", albumTimerState.isExpanded);
-    refs.toggleBtn.setAttribute("aria-expanded", String(albumTimerState.isExpanded));
+    refs.toggleBtn.setAttribute(
+      "aria-expanded",
+      String(albumTimerState.isExpanded),
+    );
   }
 
-  refs.minutesInput.value = String(Math.max(1, Math.round(albumTimerState.totalSeconds / 60)));
+  refs.minutesInput.value = String(
+    Math.max(1, Math.round(albumTimerState.totalSeconds / 60)),
+  );
   refs.minutesInput.disabled = albumTimerState.isRunning;
-  refs.readout.textContent = formatTimerSeconds(albumTimerState.remainingSeconds);
+  refs.readout.textContent = formatTimerSeconds(
+    albumTimerState.remainingSeconds,
+  );
 
   const elapsedSeconds = Math.max(
     0,
@@ -920,14 +942,19 @@ function renderAlbumTimer() {
   }
 
   refs.phase.textContent =
-    progressPercent >= 100 ? "Voting complete" : ALBUM_TIMER_PHASE_LABELS[segmentIndex];
+    progressPercent >= 100
+      ? "Voting complete"
+      : ALBUM_TIMER_PHASE_LABELS[segmentIndex];
 
   refs.segmentLabels.forEach((segmentLabel, index) => {
     segmentLabel.style.setProperty(
       "--segment-color",
       getAlbumTimerSectionColor(index).solid,
     );
-    segmentLabel.classList.toggle("is-active", index === segmentIndex && progressPercent < 100);
+    segmentLabel.classList.toggle(
+      "is-active",
+      index === segmentIndex && progressPercent < 100,
+    );
     segmentLabel.classList.toggle(
       "is-complete",
       progressPercent >= getAlbumTimerSegmentEnd(index),
@@ -968,7 +995,10 @@ function updateAlbumTimerFloatingState() {
     shouldDockToSide && albumTimerState.dockSide !== "left",
   );
 
-  refs.alignLeftBtn?.classList.toggle("is-active", albumTimerState.dockSide === "left");
+  refs.alignLeftBtn?.classList.toggle(
+    "is-active",
+    albumTimerState.dockSide === "left",
+  );
   refs.alignRightBtn?.classList.toggle(
     "is-active",
     albumTimerState.dockSide !== "left",
@@ -991,7 +1021,10 @@ function getAlbumTimerSegmentIndex(progressPercent) {
   let accumulatedPercent = 0;
   for (let index = 0; index < ALBUM_TIMER_SEGMENTS.length; index++) {
     accumulatedPercent += ALBUM_TIMER_SEGMENTS[index];
-    if (progressPercent < accumulatedPercent || index === ALBUM_TIMER_SEGMENTS.length - 1) {
+    if (
+      progressPercent < accumulatedPercent ||
+      index === ALBUM_TIMER_SEGMENTS.length - 1
+    ) {
       return index;
     }
   }
@@ -1044,7 +1077,10 @@ function buildAlbumTimerRingSegments(segmentEls, percentages, radius) {
     const segmentStart = startAngle + gapDegrees / 2;
     const segmentEnd = startAngle + segmentDegrees - gapDegrees / 2;
 
-    segmentEl.setAttribute("d", describeSvgArc(center, center, radius, segmentStart, segmentEnd));
+    segmentEl.setAttribute(
+      "d",
+      describeSvgArc(center, center, radius, segmentStart, segmentEnd),
+    );
     startAngle += segmentDegrees;
   });
 }
@@ -1113,6 +1149,26 @@ function setupEventListeners() {
   document
     .getElementById("confirmAddAlbum")
     ?.addEventListener("click", processAddAlbum);
+  document
+    .getElementById("openCustomAlbumModalBtn")
+    ?.addEventListener("click", showCustomAlbumModal);
+
+  // Custom album modal event listeners
+  document
+    .getElementById("closeCustomAlbumModal")
+    ?.addEventListener("click", closeCustomAlbumModal);
+  document
+    .getElementById("cancelCustomAlbum")
+    ?.addEventListener("click", closeCustomAlbumModal);
+  document
+    .getElementById("addCustomTrackRowBtn")
+    ?.addEventListener("click", () => addCustomTrackRow());
+  document
+    .getElementById("parseCustomTracklistBtn")
+    ?.addEventListener("click", parseCustomTracklist);
+  document
+    .getElementById("saveCustomAlbumBtn")
+    ?.addEventListener("click", processCustomAlbum);
 
   // Close modal on overlay click
   document.getElementById("addAlbumModal")?.addEventListener("click", (e) => {
@@ -1120,6 +1176,14 @@ function setupEventListeners() {
       closeAddAlbumModal();
     }
   });
+
+  document
+    .getElementById("customAlbumModal")
+    ?.addEventListener("click", (e) => {
+      if (e.target.id === "customAlbumModal") {
+        closeCustomAlbumModal();
+      }
+    });
 
   // Submit on Enter key
   document
@@ -1283,6 +1347,9 @@ function setupEventListeners() {
   document
     .getElementById("addNewLinkBtn")
     ?.addEventListener("click", addNewLinkRow);
+  document
+    .getElementById("addManualTrackBtn")
+    ?.addEventListener("click", () => addManualTrackRowToEdit());
 
   // Close modal on overlay click
   document.getElementById("editLinksModal")?.addEventListener("click", (e) => {
@@ -1310,6 +1377,10 @@ function closeAddAlbumModal() {
   document.getElementById("addAlbumModal")?.classList.add("hidden");
 }
 
+function closeCustomAlbumModal() {
+  document.getElementById("customAlbumModal")?.classList.add("hidden");
+}
+
 function closeLockConfirmModal() {
   document.getElementById("lockConfirmModal")?.classList.add("hidden");
 }
@@ -1326,11 +1397,28 @@ function closeEditLinksModal() {
   document.getElementById("editLinksModal")?.classList.add("hidden");
 }
 
+function isManualAlbumData(albumData) {
+  if (!albumData) return false;
+  if ((albumData.albumSource || "") === "custom") return true;
+  const hasYoutube = !!(albumData.youtubeUrl || albumData.playlistId);
+  const tracks = Array.isArray(albumData.tracks) ? albumData.tracks : [];
+  const hasTrackLinks = tracks.some((t) =>
+    t && (t.linkUrl || t.url) ? true : false,
+  );
+  return !hasYoutube && hasTrackLinks;
+}
+
+function clearEditModalModeState() {
+  window.currentEditMode = "links";
+  window.currentEditAlbumLocked = false;
+}
+
 // Show edit links modal
 async function showEditLinksModal(albumId) {
   if (!db) return;
 
   window.currentEditAlbumId = albumId;
+  clearEditModalModeState();
 
   // Load current links
   const albumDoc = await db.collection("albums").doc(albumId).get();
@@ -1343,9 +1431,123 @@ async function showEditLinksModal(albumId) {
   const externalLinks = albumData.externalLinks || [];
   const youtubeUrl = albumData.youtubeUrl || "";
   const isLocked = albumData.locked || false;
+  const isManualAlbum = isManualAlbumData(albumData);
+  const userIsModerator = currentUser && isModerator(currentUser.email);
+  const canEditManual = !isLocked || userIsModerator;
+
+  const modalTitle = document.querySelector("#editLinksModal .modal-header h2");
+  const modalDescription = document.getElementById("editLinksDescription");
+  const youtubeContainer = document.getElementById("youtubeEditContainer");
+  const linksContainer = document.getElementById("editLinksContainer");
+  const manualContainer = document.getElementById("manualAlbumEditContainer");
+  const addNewLinkBtn = document.getElementById("addNewLinkBtn");
+  const addManualTrackBtn = document.getElementById("addManualTrackBtn");
+
+  if (isManualAlbum) {
+    window.currentEditMode = "manual";
+    window.currentEditAlbumLocked = !!isLocked;
+
+    if (modalTitle) modalTitle.textContent = "Edit Custom Album";
+    if (modalDescription) {
+      modalDescription.textContent =
+        "Edit album details, cover image, and track links one by one.";
+    }
+
+    if (youtubeContainer) youtubeContainer.classList.add("hidden");
+    if (addNewLinkBtn) addNewLinkBtn.classList.add("hidden");
+    if (addManualTrackBtn) addManualTrackBtn.classList.remove("hidden");
+
+    if (manualContainer) {
+      manualContainer.classList.remove("hidden");
+      manualContainer.innerHTML = "";
+
+      const titleInput = document.createElement("input");
+      titleInput.type = "text";
+      titleInput.id = "editManualAlbumTitle";
+      titleInput.className = "modal-input";
+      titleInput.placeholder = "Album title";
+      titleInput.value = albumData.title || "";
+      titleInput.disabled = !canEditManual;
+
+      const artistInput = document.createElement("input");
+      artistInput.type = "text";
+      artistInput.id = "editManualAlbumArtist";
+      artistInput.className = "modal-input";
+      artistInput.placeholder = "Artist name";
+      artistInput.value = albumData.artist || "";
+      artistInput.disabled = !canEditManual;
+
+      const coverInput = document.createElement("input");
+      coverInput.type = "text";
+      coverInput.id = "editManualAlbumCover";
+      coverInput.className = "modal-input";
+      coverInput.placeholder = "Thumbnail URL";
+      coverInput.value = albumData.coverUrl || "";
+      coverInput.disabled = !canEditManual;
+
+      manualContainer.appendChild(titleInput);
+      manualContainer.appendChild(artistInput);
+      manualContainer.appendChild(coverInput);
+
+      if (!canEditManual) {
+        const lockNote = document.createElement("p");
+        lockNote.className = "manual-edit-lock-note";
+        lockNote.textContent =
+          "Album is locked. Only moderators can edit this custom album.";
+        manualContainer.appendChild(lockNote);
+      }
+    }
+
+    if (linksContainer) {
+      linksContainer.innerHTML = "";
+      const tracks = Array.isArray(albumData.tracks) ? albumData.tracks : [];
+      if (tracks.length === 0) {
+        addManualTrackRowToEdit("", "", 1, !canEditManual);
+      } else {
+        tracks.forEach((track, idx) => {
+          addManualTrackRowToEdit(
+            track?.title || "",
+            track?.linkUrl || track?.url || "",
+            track?.position || idx + 1,
+            !canEditManual,
+          );
+        });
+      }
+    }
+
+    const saveBtn = document.getElementById("saveEditLinks");
+    if (saveBtn) {
+      saveBtn.textContent = "Save Album Changes";
+      saveBtn.disabled = !canEditManual;
+    }
+    if (addManualTrackBtn) addManualTrackBtn.disabled = !canEditManual;
+
+    document.getElementById("editLinksModal").classList.remove("hidden");
+    return;
+  }
+
+  if (modalTitle) modalTitle.textContent = "Edit External Links";
+  if (modalDescription) {
+    modalDescription.textContent =
+      "Edit YouTube Music link and manage all external links for this album";
+  }
+  if (manualContainer) {
+    manualContainer.classList.add("hidden");
+    manualContainer.innerHTML = "";
+  }
+  if (youtubeContainer) youtubeContainer.classList.remove("hidden");
+  if (addNewLinkBtn) addNewLinkBtn.classList.remove("hidden");
+  if (addManualTrackBtn) {
+    addManualTrackBtn.classList.add("hidden");
+    addManualTrackBtn.disabled = false;
+  }
+  const saveBtn = document.getElementById("saveEditLinks");
+  if (saveBtn) {
+    saveBtn.textContent = "Save Changes";
+    saveBtn.disabled = false;
+  }
 
   // Populate YouTube Music section
-  const youtubeContainer = document.getElementById("youtubeEditContainer");
   youtubeContainer.innerHTML = "";
 
   const youtubeLabel = document.createElement("label");
@@ -1410,6 +1612,69 @@ async function showEditLinksModal(albumId) {
   document.getElementById("editLinksModal").classList.remove("hidden");
 }
 
+function addManualTrackRowToEdit(
+  title = "",
+  linkUrl = "",
+  position = null,
+  isDisabled = false,
+) {
+  const container = document.getElementById("editLinksContainer");
+  if (!container) return;
+
+  const row = document.createElement("div");
+  row.className = "manual-track-edit-item";
+
+  const positionBadge = document.createElement("span");
+  positionBadge.className = "manual-track-position";
+  positionBadge.textContent = String(
+    position ||
+      container.querySelectorAll(".manual-track-edit-item").length + 1,
+  );
+
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.className = "modal-input manual-track-title-input";
+  titleInput.placeholder = "Track title";
+  titleInput.value = title;
+  titleInput.disabled = isDisabled;
+  titleInput.style.marginBottom = "0";
+
+  const linkInput = document.createElement("input");
+  linkInput.type = "text";
+  linkInput.className = "modal-input manual-track-link-input";
+  linkInput.placeholder = "Song link";
+  linkInput.value = linkUrl;
+  linkInput.disabled = isDisabled;
+  linkInput.style.marginBottom = "0";
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "manual-track-remove";
+  removeBtn.textContent = "x";
+  removeBtn.title = "Remove track";
+  removeBtn.disabled = isDisabled;
+  removeBtn.addEventListener("click", () => {
+    row.remove();
+    refreshManualTrackPositions();
+  });
+
+  row.appendChild(positionBadge);
+  row.appendChild(titleInput);
+  row.appendChild(linkInput);
+  row.appendChild(removeBtn);
+  container.appendChild(row);
+}
+
+function refreshManualTrackPositions() {
+  const rows = document.querySelectorAll(
+    "#editLinksContainer .manual-track-edit-item",
+  );
+  rows.forEach((row, idx) => {
+    const badge = row.querySelector(".manual-track-position");
+    if (badge) badge.textContent = String(idx + 1);
+  });
+}
+
 // Add a link row to the edit container
 function addLinkRowToEdit(url = "", name = "", index = null) {
   const container = document.getElementById("editLinksContainer");
@@ -1460,6 +1725,103 @@ async function saveEditedLinks() {
   const albumId = window.currentEditAlbumId;
   if (!albumId || !db) return;
 
+  const editMode = window.currentEditMode || "links";
+
+  if (editMode === "manual") {
+    const titleInput = document.getElementById("editManualAlbumTitle");
+    const artistInput = document.getElementById("editManualAlbumArtist");
+    const coverInput = document.getElementById("editManualAlbumCover");
+    const trackRows = document.querySelectorAll(
+      "#editLinksContainer .manual-track-edit-item",
+    );
+
+    const title = titleInput?.value.trim() || "";
+    const artist = artistInput?.value.trim() || "";
+    const coverUrl = coverInput?.value.trim() || "";
+
+    if (!title) {
+      await showCustomAlert("Album title is required");
+      return;
+    }
+    if (!artist) {
+      await showCustomAlert("Artist name is required");
+      return;
+    }
+
+    if (coverUrl) {
+      try {
+        new URL(coverUrl);
+      } catch {
+        await showCustomAlert("Thumbnail must be a valid URL");
+        return;
+      }
+    }
+
+    const newTracks = [];
+    for (let i = 0; i < trackRows.length; i++) {
+      const row = trackRows[i];
+      const trackTitle =
+        row.querySelector(".manual-track-title-input")?.value.trim() || "";
+      const trackLink =
+        row.querySelector(".manual-track-link-input")?.value.trim() || "";
+
+      if (!trackTitle && !trackLink) {
+        continue;
+      }
+
+      if (!trackTitle || !trackLink) {
+        await showCustomAlert(
+          `Track ${i + 1} must include both title and link`,
+        );
+        return;
+      }
+
+      try {
+        new URL(trackLink);
+      } catch {
+        await showCustomAlert(`Track ${i + 1} has an invalid link URL`);
+        return;
+      }
+
+      newTracks.push({
+        position: newTracks.length + 1,
+        title: trackTitle,
+        linkUrl: trackLink,
+        videoId: extractYouTubeVideoId(trackLink),
+      });
+    }
+
+    if (newTracks.length === 0) {
+      await showCustomAlert("Add at least one track with title and link");
+      return;
+    }
+
+    closeEditLinksModal();
+
+    try {
+      await db.collection("albums").doc(albumId).update({
+        title,
+        artist,
+        coverUrl,
+        tracks: newTracks,
+      });
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
+      await loadAlbums(monthKey);
+      showToast("Album changes saved");
+      return;
+    } catch (error) {
+      console.error("Error saving manual album changes:", error);
+      await showCustomAlert(
+        `Failed to save album changes: ${error.message}`,
+        "Error",
+      );
+      return;
+    }
+  }
+
   // Get YouTube Music URL
   const youtubeUrlInput = document.getElementById("youtubeUrlInput");
   const youtubeUrl = youtubeUrlInput.value.trim();
@@ -1496,6 +1858,7 @@ async function saveEditedLinks() {
   try {
     // Update in Firebase
     await db.collection("albums").doc(albumId).update({
+      youtubeUrl: youtubeUrl,
       externalLinks: newLinks,
     });
 
@@ -1504,6 +1867,7 @@ async function saveEditedLinks() {
     const month = currentDate.getMonth();
     const monthKey = `${year}-${String(month + 1).padStart(2, "0")}`;
     await loadAlbums(monthKey);
+    showToast("Links saved");
   } catch (error) {
     console.error("Error saving links:", error);
     await showCustomAlert(`Failed to save links: ${error.message}`, "Error");
@@ -1974,18 +2338,29 @@ async function toggleTrackRatingVisibility() {
 async function saveTrackRatingVisibility(isVisible) {
   console.log("[Visibility Save] Starting save, isVisible:", isVisible);
   if (!db || !currentUser || !currentRatingContext) {
-    console.log("[Visibility Save] Missing context:", { db: !!db, currentUser: !!currentUser, currentRatingContext: !!currentRatingContext });
+    console.log("[Visibility Save] Missing context:", {
+      db: !!db,
+      currentUser: !!currentUser,
+      currentRatingContext: !!currentRatingContext,
+    });
     return;
   }
 
   const { albumId, track, currentRatings } = currentRatingContext;
   const trackKey = `${track.position}-${track.title}`;
   const userEmail = currentUser.email;
-  console.log("[Visibility Save] Saving for track:", trackKey, "album:", albumId, "user:", userEmail);
+  console.log(
+    "[Visibility Save] Saving for track:",
+    trackKey,
+    "album:",
+    albumId,
+    "user:",
+    userEmail,
+  );
 
   // Deep clone current ratings to ensure Firestore detects changes
   const updatedRatings = JSON.parse(JSON.stringify(currentRatings || {}));
-  
+
   // Ensure user rating object exists
   if (!updatedRatings[userEmail]) {
     updatedRatings[userEmail] = {};
@@ -1998,7 +2373,10 @@ async function saveTrackRatingVisibility(isVisible) {
 
   // Set the visibility for this track
   updatedRatings[userEmail].ratingsVisible[trackKey] = isVisible;
-  console.log("[Visibility Save] New ratingsVisible:", updatedRatings[userEmail].ratingsVisible);
+  console.log(
+    "[Visibility Save] New ratingsVisible:",
+    updatedRatings[userEmail].ratingsVisible,
+  );
 
   try {
     await db.collection("albums").doc(albumId).update({
@@ -2219,6 +2597,198 @@ async function showAddAlbumModal() {
   modal.classList.remove("hidden");
   input.value = "";
   input.focus();
+}
+
+function showCustomAlbumModal() {
+  closeAddAlbumModal();
+  const modal = document.getElementById("customAlbumModal");
+  const titleInput = document.getElementById("customAlbumTitleInput");
+
+  resetCustomAlbumForm();
+  modal?.classList.remove("hidden");
+  titleInput?.focus();
+}
+
+function resetCustomAlbumForm() {
+  const titleInput = document.getElementById("customAlbumTitleInput");
+  const artistInput = document.getElementById("customAlbumArtistInput");
+  const thumbnailInput = document.getElementById("customAlbumThumbnailInput");
+  const bulkInput = document.getElementById("customTracklistBulkInput");
+  const container = document.getElementById("customTracksContainer");
+
+  if (titleInput) titleInput.value = "";
+  if (artistInput) artistInput.value = "";
+  if (thumbnailInput) thumbnailInput.value = "";
+  if (bulkInput) bulkInput.value = "";
+  if (container) container.innerHTML = "";
+
+  addCustomTrackRow();
+}
+
+function addCustomTrackRow(title = "", linkUrl = "") {
+  const container = document.getElementById("customTracksContainer");
+  if (!container) return;
+
+  const row = document.createElement("div");
+  row.className = "custom-track-row";
+
+  const titleInput = document.createElement("input");
+  titleInput.type = "text";
+  titleInput.className = "modal-input custom-track-title-input";
+  titleInput.placeholder = "Track title";
+  titleInput.value = title;
+  titleInput.style.marginBottom = "0";
+
+  const linkInput = document.createElement("input");
+  linkInput.type = "text";
+  linkInput.className = "modal-input custom-track-link-input";
+  linkInput.placeholder = "Song link (required)";
+  linkInput.value = linkUrl;
+  linkInput.style.marginBottom = "0";
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "custom-track-remove";
+  removeBtn.textContent = "x";
+  removeBtn.title = "Remove track";
+  removeBtn.addEventListener("click", () => {
+    row.remove();
+
+    if (!container.querySelector(".custom-track-row")) {
+      addCustomTrackRow();
+    }
+  });
+
+  row.appendChild(titleInput);
+  row.appendChild(linkInput);
+  row.appendChild(removeBtn);
+  container.appendChild(row);
+}
+
+function parseCustomTracklist() {
+  const bulkInput = document.getElementById("customTracklistBulkInput");
+  const container = document.getElementById("customTracksContainer");
+  if (!bulkInput || !container) return;
+
+  const lines = bulkInput.value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    showCustomAlert("Paste at least one track line to parse.");
+    return;
+  }
+
+  container.innerHTML = "";
+
+  lines.forEach((line) => {
+    let title = line;
+    let linkUrl = "";
+
+    if (line.includes("|")) {
+      const parts = line.split("|");
+      title = (parts[0] || "").trim();
+      linkUrl = (parts.slice(1).join("|") || "").trim();
+    }
+
+    addCustomTrackRow(title, linkUrl);
+  });
+}
+
+function extractYouTubeVideoId(url) {
+  if (!url || typeof url !== "string") return "";
+
+  const trimmed = url.trim();
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /music\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = trimmed.match(pattern);
+    if (match && match[1]) return match[1];
+  }
+
+  return "";
+}
+
+// Process custom album addition from dedicated modal
+async function processCustomAlbum() {
+  const titleInput = document.getElementById("customAlbumTitleInput");
+  const artistInput = document.getElementById("customAlbumArtistInput");
+  const thumbnailInput = document.getElementById("customAlbumThumbnailInput");
+  const rows = document.querySelectorAll(
+    "#customTracksContainer .custom-track-row",
+  );
+
+  const title = titleInput?.value.trim() || "";
+  const artist = artistInput?.value.trim() || "";
+  const thumbnail = thumbnailInput?.value.trim() || "";
+
+  if (!title) {
+    await showCustomAlert("Album title is required.");
+    return;
+  }
+
+  if (!artist) {
+    await showCustomAlert("Artist name is required.");
+    return;
+  }
+
+  if (thumbnail) {
+    try {
+      new URL(thumbnail);
+    } catch {
+      await showCustomAlert("Thumbnail must be a valid URL.");
+      return;
+    }
+  }
+
+  const tracks = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowTitle =
+      row.querySelector(".custom-track-title-input")?.value.trim() || "";
+    const rowLink =
+      row.querySelector(".custom-track-link-input")?.value.trim() || "";
+
+    if (!rowTitle && !rowLink) {
+      continue;
+    }
+
+    if (!rowTitle || !rowLink) {
+      await showCustomAlert(
+        `Track ${i + 1} must have both a title and a link.`,
+      );
+      return;
+    }
+
+    try {
+      new URL(rowLink);
+    } catch {
+      await showCustomAlert(`Track ${i + 1} has an invalid link URL.`);
+      return;
+    }
+
+    tracks.push({
+      position: tracks.length + 1,
+      title: rowTitle,
+      linkUrl: rowLink,
+      videoId: extractYouTubeVideoId(rowLink),
+    });
+  }
+
+  if (tracks.length === 0) {
+    await showCustomAlert("Add at least one track with title and link.");
+    return;
+  }
+
+  closeCustomAlbumModal();
+  await addAlbum(title, artist, thumbnail, "", "", tracks, [], "custom");
 }
 
 // Process album addition from modal
@@ -2575,6 +3145,8 @@ async function addAlbum(
   youtubeUrl = "",
   playlistId = "",
   tracks = [],
+  externalLinks = [],
+  albumSource = "youtube",
 ) {
   if (!db || !currentUser) {
     await showCustomAlert("Unable to add album. Please try again.");
@@ -2606,6 +3178,8 @@ async function addAlbum(
       youtubeUrl,
       playlistId,
       tracks,
+      externalLinks,
+      albumSource,
       monthKey,
     });
 
@@ -2617,6 +3191,8 @@ async function addAlbum(
       youtubeUrl: youtubeUrl || "",
       playlistId: playlistId || "",
       tracks: tracks || [],
+      externalLinks: externalLinks || [],
+      albumSource: albumSource || "youtube",
       addedBy: currentUser.email,
       addedByName: currentUser.name,
       createdAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -3127,7 +3703,7 @@ function updateAlbums(albums) {
         const editBtn = document.createElement("button");
         editBtn.className = "edit-btn";
         editBtn.textContent = "✎";
-        editBtn.title = "Edit all external links";
+        editBtn.title = "Edit album details";
         editBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           showEditLinksModal(album.id);
@@ -3193,7 +3769,7 @@ function updateAlbums(albums) {
       const editBtn = document.createElement("button");
       editBtn.className = "edit-btn";
       editBtn.textContent = "✎";
-      editBtn.title = "Edit external links (Moderator)";
+      editBtn.title = "Edit album details (Moderator)";
       editBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         showEditLinksModal(album.id);
@@ -3395,6 +3971,20 @@ function updateAlbums(albums) {
         trackText.textContent = `${track.position}. ${track.title}`;
         trackItem.appendChild(trackText);
 
+        const trackLinkUrl = track.linkUrl || track.url || "";
+        if (trackLinkUrl) {
+          const linkBtn = document.createElement("button");
+          linkBtn.type = "button";
+          linkBtn.className = "track-link-btn";
+          linkBtn.textContent = "Open";
+          linkBtn.title = "Open track link";
+          linkBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            window.open(trackLinkUrl, "_blank", "noopener,noreferrer");
+          });
+          trackItem.appendChild(linkBtn);
+        }
+
         // Add ratings container for all users who rated this track (also hosts note indicator)
         const trackRatings = album.trackRatings || {};
         const trackKey = `${track.position}-${track.title}`;
@@ -3445,8 +4035,16 @@ function updateAlbums(albums) {
             userRating.ratingsVisible?.[trackKey] === true;
 
           // Debug logging for visibility
-          if (userRating.ratings && userRating.ratings[trackKey] !== undefined) {
-            console.log(`[TrackRating Debug] Track: "${trackKey}", User: ${userEmail}, Rating: ${userRating.ratings[trackKey]}, Visible: ${isRatingVisible}, ratingsVisible obj:`, userRating.ratingsVisible, `ratingsVisible[trackKey]:`, userRating.ratingsVisible?.[trackKey]);
+          if (
+            userRating.ratings &&
+            userRating.ratings[trackKey] !== undefined
+          ) {
+            console.log(
+              `[TrackRating Debug] Track: "${trackKey}", User: ${userEmail}, Rating: ${userRating.ratings[trackKey]}, Visible: ${isRatingVisible}, ratingsVisible obj:`,
+              userRating.ratingsVisible,
+              `ratingsVisible[trackKey]:`,
+              userRating.ratingsVisible?.[trackKey],
+            );
           }
 
           if (
@@ -3521,9 +4119,11 @@ function updateAlbums(albums) {
         try {
           // Track which users already have indicators from ratings
           const usersWithRatingIndicators = new Set();
-          ratingsContainer.querySelectorAll('[data-user-email]').forEach(el => {
-            usersWithRatingIndicators.add(el.dataset.userEmail);
-          });
+          ratingsContainer
+            .querySelectorAll("[data-user-email]")
+            .forEach((el) => {
+              usersWithRatingIndicators.add(el.dataset.userEmail);
+            });
 
           Object.entries(trackRatings).forEach(([userEmail, userRating]) => {
             // Skip if user already has an indicator from their rating
@@ -3545,7 +4145,9 @@ function updateAlbums(albums) {
 
             // Debug logging for notes visibility
             if (userRating.notes && userRating.notes[trackKey]) {
-              console.log(`[Notes Debug] Track: "${trackKey}", User: ${userEmail}, Note visible: ${userRating.notes[trackKey].visible}, Note text: "${userRating.notes[trackKey].text?.substring(0, 30)}...", hasVisibleNote computed: ${hasVisibleNote}`);
+              console.log(
+                `[Notes Debug] Track: "${trackKey}", User: ${userEmail}, Note visible: ${userRating.notes[trackKey].visible}, Note text: "${userRating.notes[trackKey].text?.substring(0, 30)}...", hasVisibleNote computed: ${hasVisibleNote}`,
+              );
             }
 
             if (hasVisibleNote) {
@@ -4061,6 +4663,23 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   const trackNameEl = document.getElementById("rateTrackName");
   trackNameEl.textContent = `${track.position}. ${track.title}`;
 
+  const songLinkRow = document.getElementById("rateTrackSongLinkRow");
+  const songLinkEl = document.getElementById("rateTrackSongLink");
+  const resolvedTrackLink =
+    track.linkUrl ||
+    track.url ||
+    (track.videoId ? `https://www.youtube.com/watch?v=${track.videoId}` : "");
+
+  if (songLinkRow && songLinkEl) {
+    if (resolvedTrackLink) {
+      songLinkEl.href = resolvedTrackLink;
+      songLinkRow.classList.remove("hidden");
+    } else {
+      songLinkEl.removeAttribute("href");
+      songLinkRow.classList.add("hidden");
+    }
+  }
+
   // Update modal title depending on participation
   try {
     const modalTitle = document.getElementById("rateTrackModalTitle");
@@ -4256,9 +4875,28 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
 
   modal.classList.remove("hidden");
 
+  const playerContainer = document.querySelector(
+    "#rateTrackModal .track-player-container",
+  );
+
   // Load YouTube player if we have a video ID
   if (track.videoId) {
+    if (playerContainer) {
+      playerContainer.style.display = "block";
+    }
     loadTrackPlayer(track.videoId);
+  } else {
+    if (trackPlayer) {
+      trackPlayer.destroy();
+      trackPlayer = null;
+    }
+    const playerNode = document.getElementById("trackPlayer");
+    if (playerNode) {
+      playerNode.innerHTML = "";
+    }
+    if (playerContainer) {
+      playerContainer.style.display = "none";
+    }
   }
 }
 
@@ -4636,6 +5274,22 @@ async function closeRateTrackModal() {
   const playerContainer = document.getElementById("trackPlayer");
   if (playerContainer) {
     playerContainer.innerHTML = "";
+  }
+
+  const playerContainerWrap = document.querySelector(
+    "#rateTrackModal .track-player-container",
+  );
+  if (playerContainerWrap) {
+    playerContainerWrap.style.display = "block";
+  }
+
+  const songLinkRow = document.getElementById("rateTrackSongLinkRow");
+  const songLinkEl = document.getElementById("rateTrackSongLink");
+  if (songLinkRow) {
+    songLinkRow.classList.add("hidden");
+  }
+  if (songLinkEl) {
+    songLinkEl.removeAttribute("href");
   }
 
   currentRatingContext = null;
@@ -5907,6 +6561,7 @@ async function loadAlbums(monthKey) {
         artist: data.artist,
         coverUrl: data.coverUrl,
         youtubeUrl: data.youtubeUrl,
+        albumSource: data.albumSource || "youtube",
         playlistId: data.playlistId || "",
         tracks: data.tracks || [],
         trackRatings: data.trackRatings || {},

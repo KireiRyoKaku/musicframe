@@ -995,7 +995,9 @@ body {
   font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  transition: color 0.2s ease, border-color 0.2s ease;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .album-timer-segment.is-active,
@@ -1764,6 +1766,23 @@ body {
   flex: 1;
 }
 
+.track-link-btn {
+  background: rgba(102, 126, 234, 0.2);
+  border: 1px solid rgba(102, 126, 234, 0.45);
+  color: #dbe4ff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+  margin-left: 10px;
+  transition: all 0.2s ease;
+}
+
+.track-link-btn:hover {
+  background: rgba(102, 126, 234, 0.35);
+  color: #ffffff;
+}
+
 .track-ratings-container {
   display: flex;
   align-items: center;
@@ -1984,6 +2003,30 @@ body {
   font-size: 0.95rem;
 }
 
+.rate-track-song-link-row {
+  margin-bottom: 14px;
+}
+
+.rate-track-song-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: #e9eeff;
+  border: 1px solid rgba(102, 126, 234, 0.45);
+  background: rgba(102, 126, 234, 0.2);
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.rate-track-song-link:hover {
+  color: #ffffff;
+  background: rgba(102, 126, 234, 0.35);
+}
+
 /* Track Player Container */
 .track-player-container {
   margin: 20px 0 25px 0;
@@ -2095,6 +2138,68 @@ body {
 .modal-btn-secondary:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #e0e0e0;
+}
+
+.custom-tracklist-label {
+  display: block;
+  color: #e0e0e0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.custom-tracklist-help {
+  color: #9aa0b8;
+  font-size: 0.82rem;
+  margin-bottom: 10px;
+}
+
+.custom-tracklist-bulk {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.custom-tracks-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.custom-tracks-header-row h3 {
+  font-size: 1rem;
+  color: #f2f4ff;
+}
+
+.custom-tracks-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.custom-track-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.3fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.custom-track-remove {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.2);
+  color: #ffb4b4;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.custom-track-remove:hover {
+  background: rgba(239, 68, 68, 0.32);
+  color: #ffffff;
 }
 
 /* Rating Options */
@@ -2578,6 +2683,17 @@ body {
   margin-bottom: 24px;
 }
 
+.manual-album-edit-container {
+  margin-bottom: 16px;
+}
+
+.manual-edit-lock-note {
+  font-size: 0.9rem;
+  color: #ef4444;
+  margin-top: -6px;
+  margin-bottom: 8px;
+}
+
 /* Edit Links Container */
 .edit-links-container {
   display: flex;
@@ -2622,6 +2738,46 @@ body {
   transform: scale(1.05);
 }
 
+.manual-track-edit-item {
+  display: grid;
+  grid-template-columns: 36px 1fr 1.2fr 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+.manual-track-position {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cfd5e6;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.manual-track-remove {
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.manual-track-remove:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.04);
+}
+
 @media (max-width: 480px) {
   .modal-container {
     width: 95%;
@@ -2637,6 +2793,25 @@ body {
 
   .modal-buttons {
     flex-direction: column;
+  }
+
+  .manual-track-edit-item {
+    grid-template-columns: 1fr;
+  }
+
+  .manual-track-position,
+  .manual-track-remove {
+    width: 100%;
+    height: 34px;
+  }
+
+  .custom-track-row {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-track-remove {
+    width: 100%;
+    height: 34px;
   }
 }
 

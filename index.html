@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Musicframe - Monthly Music Reviews</title>
-    <link rel="stylesheet" href="styles.css?v=31" />
+    <link rel="stylesheet" href="styles.css?v=34" />
 
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -188,7 +188,11 @@
         <!-- Albums Section -->
         <section class="albums-section">
           <h2>This Month's Albums</h2>
-          <div id="albumTimerPanel" class="album-timer-panel is-collapsed" aria-label="Listening timer">
+          <div
+            id="albumTimerPanel"
+            class="album-timer-panel is-collapsed"
+            aria-label="Listening timer"
+          >
             <div class="album-timer-controls">
               <label class="album-timer-label" for="albumTimerMinutes"
                 >Timer</label
@@ -203,7 +207,11 @@
                 aria-label="Timer duration in minutes"
               />
               <span class="album-timer-unit">minutes</span>
-              <button id="albumTimerStartBtn" class="album-timer-btn" type="button">
+              <button
+                id="albumTimerStartBtn"
+                class="album-timer-btn"
+                type="button"
+              >
                 Start
               </button>
               <button
@@ -234,7 +242,10 @@
             </div>
             <div class="album-timer-line" aria-hidden="true">
               <div class="album-timer-line-track"></div>
-              <div class="album-timer-line-progress" id="albumTimerProgress"></div>
+              <div
+                class="album-timer-line-progress"
+                id="albumTimerProgress"
+              ></div>
               <div class="album-timer-marker album-timer-marker-1"></div>
               <div class="album-timer-marker album-timer-marker-2"></div>
               <div class="album-timer-marker album-timer-marker-3"></div>
@@ -244,14 +255,38 @@
                 viewBox="0 0 120 120"
                 aria-hidden="true"
               >
-                <path class="album-timer-ring-segment" data-ring-segment="0"></path>
-                <path class="album-timer-ring-segment" data-ring-segment="1"></path>
-                <path class="album-timer-ring-segment" data-ring-segment="2"></path>
-                <path class="album-timer-ring-segment" data-ring-segment="3"></path>
-                <line class="album-timer-ring-divider" data-ring-divider="0"></line>
-                <line class="album-timer-ring-divider" data-ring-divider="1"></line>
-                <line class="album-timer-ring-divider" data-ring-divider="2"></line>
-                <line class="album-timer-ring-divider" data-ring-divider="3"></line>
+                <path
+                  class="album-timer-ring-segment"
+                  data-ring-segment="0"
+                ></path>
+                <path
+                  class="album-timer-ring-segment"
+                  data-ring-segment="1"
+                ></path>
+                <path
+                  class="album-timer-ring-segment"
+                  data-ring-segment="2"
+                ></path>
+                <path
+                  class="album-timer-ring-segment"
+                  data-ring-segment="3"
+                ></path>
+                <line
+                  class="album-timer-ring-divider"
+                  data-ring-divider="0"
+                ></line>
+                <line
+                  class="album-timer-ring-divider"
+                  data-ring-divider="1"
+                ></line>
+                <line
+                  class="album-timer-ring-divider"
+                  data-ring-divider="2"
+                ></line>
+                <line
+                  class="album-timer-ring-divider"
+                  data-ring-divider="3"
+                ></line>
                 <circle
                   class="album-timer-ring-progress"
                   id="albumTimerRingProgress"
@@ -312,6 +347,14 @@
             autocomplete="off"
           />
           <div class="modal-buttons">
+            <button
+              type="button"
+              class="modal-btn modal-btn-secondary"
+              id="openCustomAlbumModalBtn"
+              style="margin-right: auto"
+            >
+              Add Custom Album Instead
+            </button>
             <button class="modal-btn modal-btn-cancel" id="cancelAddAlbum">
               Cancel
             </button>
@@ -323,19 +366,110 @@
       </div>
     </div>
 
+    <!-- Add Custom Album Modal -->
+    <div id="customAlbumModal" class="modal-overlay hidden">
+      <div class="modal-container modal-container-large">
+        <div class="modal-header">
+          <h2>Add Custom Album</h2>
+          <button class="modal-close" id="closeCustomAlbumModal">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-description">
+            Add an album that is not on YouTube Music in one go.
+          </p>
+
+          <input
+            type="text"
+            id="customAlbumTitleInput"
+            class="modal-input"
+            placeholder="Album title"
+            autocomplete="off"
+          />
+          <input
+            type="text"
+            id="customAlbumArtistInput"
+            class="modal-input"
+            placeholder="Artist name"
+            autocomplete="off"
+          />
+          <input
+            type="text"
+            id="customAlbumThumbnailInput"
+            class="modal-input"
+            placeholder="Thumbnail URL (optional)"
+            autocomplete="off"
+          />
+
+          <label class="custom-tracklist-label" for="customTracklistBulkInput"
+            >Quick Tracklist Paste</label
+          >
+          <p class="custom-tracklist-help">
+            Paste one track per line using: Track title | https://song-link
+          </p>
+          <textarea
+            id="customTracklistBulkInput"
+            class="modal-input custom-tracklist-bulk"
+            placeholder="Intro | https://example.com/song1&#10;Track Two | https://example.com/song2"
+          ></textarea>
+          <button
+            type="button"
+            class="modal-btn modal-btn-secondary"
+            id="parseCustomTracklistBtn"
+            style="width: 100%; margin-bottom: 16px"
+          >
+            Parse Tracklist
+          </button>
+
+          <div class="custom-tracks-header-row">
+            <h3>Tracks</h3>
+            <button
+              type="button"
+              class="modal-btn modal-btn-secondary"
+              id="addCustomTrackRowBtn"
+            >
+              + Add Track
+            </button>
+          </div>
+          <div id="customTracksContainer" class="custom-tracks-container"></div>
+
+          <div class="modal-buttons">
+            <button class="modal-btn modal-btn-cancel" id="cancelCustomAlbum">
+              Cancel
+            </button>
+            <button class="modal-btn modal-btn-primary" id="saveCustomAlbumBtn">
+              Save Custom Album
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Edit Links Modal -->
     <div id="editLinksModal" class="modal-overlay hidden">
-      <div class="modal-container">
+      <div class="modal-container modal-container-large">
         <div class="modal-header">
           <h2>Edit External Links</h2>
           <button class="modal-close" id="closeEditLinksModal">&times;</button>
         </div>
         <div class="modal-body">
-          <p class="modal-description">
+          <p class="modal-description" id="editLinksDescription">
             Edit YouTube Music link and manage all external links for this album
           </p>
+          <div
+            id="manualAlbumEditContainer"
+            class="manual-album-edit-container hidden"
+          ></div>
           <div id="youtubeEditContainer" class="youtube-edit-container"></div>
           <div id="editLinksContainer" class="edit-links-container"></div>
+          <button
+            class="modal-btn modal-btn-secondary hidden"
+            id="addManualTrackBtn"
+            style="width: 100%; margin-bottom: 12px"
+          >
+            + Add Track
+          </button>
           <button
             class="modal-btn modal-btn-secondary"
             id="addNewLinkBtn"
@@ -448,6 +582,21 @@
         </div>
         <div class="modal-body">
           <p class="modal-description" id="rateTrackName"></p>
+
+          <div
+            id="rateTrackSongLinkRow"
+            class="rate-track-song-link-row hidden"
+          >
+            <a
+              id="rateTrackSongLink"
+              class="rate-track-song-link"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open Song Link
+            </a>
+          </div>
 
           <!-- YouTube Player -->
           <div class="track-player-container">
