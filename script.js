@@ -4507,7 +4507,7 @@ function attachSliderListeners(sliderId, changeHandler) {
   if (!slider) return;
   // Use 'input' for real-time feedback, 'change' for final value (saves on release)
   slider.addEventListener("input", () => {
-    if (slider.disabled || isVotingComplete()) {
+    if (slider.disabled) {
       return;
     }
     const value = parseFloat(slider.value);
@@ -4517,7 +4517,7 @@ function attachSliderListeners(sliderId, changeHandler) {
     container?.classList.remove("no-value");
   });
   slider.addEventListener("change", () => {
-    if (slider.disabled || isVotingComplete()) {
+    if (slider.disabled) {
       return;
     }
     const value = parseFloat(slider.value);
@@ -4570,9 +4570,6 @@ function clearRatingGridSelection(gridId, displayId) {
 
 // Handle track rating button click — auto-saves
 async function handleTrackRatingClick(value) {
-  if (isVotingComplete()) {
-    return;
-  }
   selectRatingGridValue("trackRatingGrid", "trackRatingValue", value);
   await saveTrackRating(value);
 }
@@ -4795,41 +4792,6 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     if (trackRatVisToggle2) {
       trackRatVisToggle2.disabled = false;
       trackRatVisToggle2.removeAttribute("aria-disabled");
-    }
-  }
-
-  // If voting has ended, lock all rating/note inputs regardless of participation
-  if (isVotingComplete()) {
-    const trackSliderV = document.getElementById("trackRatingSlider");
-    if (trackSliderV) trackSliderV.disabled = true;
-    if (clearBtn) clearBtn.disabled = true;
-    ratingButtonIds.forEach((id) => {
-      const b = document.getElementById(id);
-      if (b) {
-        b.disabled = true;
-        b.classList.add("disabled");
-        b.title = "Voting has ended";
-      }
-    });
-    if (notesTextarea) {
-      notesTextarea.disabled = true;
-      notesTextarea.placeholder = "Voting has ended";
-    }
-    if (visibilityToggle) {
-      visibilityToggle.disabled = true;
-      visibilityToggle.setAttribute("aria-disabled", "true");
-    }
-    const trackRatVisToggleV = document.getElementById(
-      "trackRatingVisibilityToggle",
-    );
-    if (trackRatVisToggleV) {
-      trackRatVisToggleV.disabled = true;
-      trackRatVisToggleV.setAttribute("aria-disabled", "true");
-    }
-    const modalTitle = document.getElementById("rateTrackModalTitle");
-    if (modalTitle) {
-      modalTitle.textContent = "Voting has ended";
-      modalTitle.classList.add("join-title");
     }
   }
 
@@ -5540,14 +5502,6 @@ async function showAlbumNoteModal(albumId) {
       const albSliderV = document.getElementById("albumRatingSlider");
       if (albSliderV) albSliderV.disabled = true;
       if (clearAlbumRatingBtn) clearAlbumRatingBtn.disabled = true;
-      if (textarea) {
-        textarea.disabled = true;
-        textarea.placeholder = "Voting has ended";
-      }
-      if (visibilityToggle) {
-        visibilityToggle.disabled = true;
-        visibilityToggle.setAttribute("aria-disabled", "true");
-      }
       const albRatVisToggleV = document.getElementById(
         "albumRatingVisibilityToggle",
       );
@@ -6054,10 +6008,6 @@ async function saveTrackRating(ratingValue) {
     return;
   }
 
-  if (isVotingComplete()) {
-    return;
-  }
-
   // Prevent non-participants from applying ratings
   const isParticipant =
     window.currentParticipants &&
@@ -6144,10 +6094,6 @@ async function saveTrackRating(ratingValue) {
 // Clear track rating
 async function clearTrackRating() {
   if (!db || !currentUser || !currentRatingContext) {
-    return;
-  }
-
-  if (isVotingComplete()) {
     return;
   }
 
