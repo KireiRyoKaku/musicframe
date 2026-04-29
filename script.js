@@ -144,6 +144,9 @@ let albumTimerState = {
 // Initialize global participants array to prevent undefined errors
 window.currentParticipants = [];
 
+// Whether voting has been officially ended for the current month
+window.votingEnded = false;
+
 // Store consistent emoji assignments per user email
 const userEmojiMap = {};
 
@@ -1029,6 +1032,10 @@ function getAlbumTimerSegmentIndex(progressPercent) {
     }
   }
   return ALBUM_TIMER_SEGMENTS.length - 1;
+}
+
+function isVotingComplete() {
+  return window.votingEnded === true;
 }
 
 function getAlbumTimerSegmentEnd(index) {
@@ -4500,6 +4507,9 @@ function attachSliderListeners(sliderId, changeHandler) {
   if (!slider) return;
   // Use 'input' for real-time feedback, 'change' for final value (saves on release)
   slider.addEventListener("input", () => {
+    if (slider.disabled || isVotingComplete()) {
+      return;
+    }
     const value = parseFloat(slider.value);
     const container = slider.closest(".rating-slider-container");
     const display = container?.querySelector(".rating-slider-value");
@@ -4507,6 +4517,9 @@ function attachSliderListeners(sliderId, changeHandler) {
     container?.classList.remove("no-value");
   });
   slider.addEventListener("change", () => {
+    if (slider.disabled || isVotingComplete()) {
+      return;
+    }
     const value = parseFloat(slider.value);
     changeHandler(value);
   });
@@ -4557,12 +4570,18 @@ function clearRatingGridSelection(gridId, displayId) {
 
 // Handle track rating button click — auto-saves
 async function handleTrackRatingClick(value) {
+  if (isVotingComplete()) {
+    return;
+  }
   selectRatingGridValue("trackRatingGrid", "trackRatingValue", value);
   await saveTrackRating(value);
 }
 
 // Handle album rating button click — auto-saves
 async function handleAlbumRatingClick(value) {
+  if (isVotingComplete()) {
+    return;
+  }
   selectRatingGridValue("albumRatingGrid", "albumRatingValue", value);
   await saveAlbumRating(value);
 }
@@ -4776,6 +4795,41 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     if (trackRatVisToggle2) {
       trackRatVisToggle2.disabled = false;
       trackRatVisToggle2.removeAttribute("aria-disabled");
+    }
+  }
+
+  // If voting has ended, lock all rating/note inputs regardless of participation
+  if (isVotingComplete()) {
+    const trackSliderV = document.getElementById("trackRatingSlider");
+    if (trackSliderV) trackSliderV.disabled = true;
+    if (clearBtn) clearBtn.disabled = true;
+    ratingButtonIds.forEach((id) => {
+      const b = document.getElementById(id);
+      if (b) {
+        b.disabled = true;
+        b.classList.add("disabled");
+        b.title = "Voting has ended";
+      }
+    });
+    if (notesTextarea) {
+      notesTextarea.disabled = true;
+      notesTextarea.placeholder = "Voting has ended";
+    }
+    if (visibilityToggle) {
+      visibilityToggle.disabled = true;
+      visibilityToggle.setAttribute("aria-disabled", "true");
+    }
+    const trackRatVisToggleV = document.getElementById(
+      "trackRatingVisibilityToggle",
+    );
+    if (trackRatVisToggleV) {
+      trackRatVisToggleV.disabled = true;
+      trackRatVisToggleV.setAttribute("aria-disabled", "true");
+    }
+    const modalTitle = document.getElementById("rateTrackModalTitle");
+    if (modalTitle) {
+      modalTitle.textContent = "Voting has ended";
+      modalTitle.classList.add("join-title");
     }
   }
 
@@ -5481,6 +5535,32 @@ async function showAlbumNoteModal(albumId) {
       }
     }
 
+    // If voting has ended, lock all inputs regardless of participation
+    if (isVotingComplete()) {
+      const albSliderV = document.getElementById("albumRatingSlider");
+      if (albSliderV) albSliderV.disabled = true;
+      if (clearAlbumRatingBtn) clearAlbumRatingBtn.disabled = true;
+      if (textarea) {
+        textarea.disabled = true;
+        textarea.placeholder = "Voting has ended";
+      }
+      if (visibilityToggle) {
+        visibilityToggle.disabled = true;
+        visibilityToggle.setAttribute("aria-disabled", "true");
+      }
+      const albRatVisToggleV = document.getElementById(
+        "albumRatingVisibilityToggle",
+      );
+      if (albRatVisToggleV) {
+        albRatVisToggleV.disabled = true;
+        albRatVisToggleV.setAttribute("aria-disabled", "true");
+      }
+      const titleElV = document.getElementById("albumNoteModalTitle");
+      if (titleElV) {
+        titleElV.classList.add("join-title");
+      }
+    }
+
     // Compute and show Bayesian average suggestion
     updateBayesianSuggestion(albumId);
 
@@ -5974,6 +6054,10 @@ async function saveTrackRating(ratingValue) {
     return;
   }
 
+  if (isVotingComplete()) {
+    return;
+  }
+
   // Prevent non-participants from applying ratings
   const isParticipant =
     window.currentParticipants &&
@@ -6060,6 +6144,10 @@ async function saveTrackRating(ratingValue) {
 // Clear track rating
 async function clearTrackRating() {
   if (!db || !currentUser || !currentRatingContext) {
+    return;
+  }
+
+  if (isVotingComplete()) {
     return;
   }
 
@@ -6150,6 +6238,10 @@ async function saveAlbumRating(ratingValue) {
     return;
   }
 
+  if (isVotingComplete()) {
+    return;
+  }
+
   const isParticipant =
     window.currentParticipants &&
     window.currentParticipants.some((p) => p.email === currentUser.email);
@@ -6223,6 +6315,7 @@ async function saveAlbumRating(ratingValue) {
 // Save album rating visibility independently (called on modal close)
 async function saveAlbumRatingVisibility() {
   if (!db || !currentUser || !currentAlbumNoteContext) return;
+  if (isVotingComplete()) return;
   const { albumId } = currentAlbumNoteContext;
   const userEmail = currentUser.email;
   const album = window.currentAlbums?.find((a) => a.id === albumId);
@@ -6263,6 +6356,10 @@ async function saveAlbumRatingVisibility() {
 // Clear album rating
 async function clearAlbumRating() {
   if (!db || !currentUser || !currentAlbumNoteContext) {
+    return;
+  }
+
+  if (isVotingComplete()) {
     return;
   }
 
@@ -6570,6 +6667,7 @@ async function loadAlbums(monthKey) {
         externalLinks: data.externalLinks || [],
         albumNotes: data.albumNotes || {},
         votes: data.votes || {},
+        votingEnded: data.votingEnded === true,
         addedBy: data.addedBy,
         addedByName: data.addedByName,
         locked: data.locked || false,
@@ -6579,6 +6677,20 @@ async function loadAlbums(monthKey) {
 
     // Store albums in global variable for access by updateParticipants
     window.currentAlbums = albums;
+
+    // Voting is considered ended when all month albums are marked ended.
+    // Fallback: treat already-revealed months as ended for backward compatibility.
+    const participants = window.currentParticipants || [];
+    const allRevealed =
+      participants.length > 0 &&
+      albums.length > 0 &&
+      albums.every((album) => {
+        const visMap = album.albumRatingsVisible || {};
+        return participants.every((p) => visMap[p.email] === true);
+      });
+    window.votingEnded =
+      (albums.length > 0 && albums.every((a) => a.votingEnded === true)) ||
+      allRevealed;
 
     // Update the albums array
     updateAlbums(albums);
@@ -6740,6 +6852,9 @@ async function voteBestAlbum() {
         updates.trackRatings = trackRatings;
       }
 
+      // Persist official voting-ended state on each album doc.
+      updates.votingEnded = true;
+
       await db.collection("albums").doc(album.id).update(updates);
 
       // Update in-memory
@@ -6749,8 +6864,11 @@ async function voteBestAlbum() {
         if (trackRatingsChanged) {
           window.currentAlbums[idx].trackRatings = trackRatings;
         }
+        window.currentAlbums[idx].votingEnded = true;
       }
     }
+
+    window.votingEnded = true;
   } catch (e) {
     console.error("Error revealing ratings:", e);
     await showCustomAlert("Error revealing ratings. Please try again.");
@@ -6883,6 +7001,8 @@ async function resetVoting() {
         updates.trackRatings = trackRatings;
       }
 
+      updates.votingEnded = false;
+
       await db.collection("albums").doc(album.id).update(updates);
 
       // Update in-memory
@@ -6892,8 +7012,11 @@ async function resetVoting() {
         if (trackRatingsChanged) {
           window.currentAlbums[idx].trackRatings = trackRatings;
         }
+        window.currentAlbums[idx].votingEnded = false;
       }
     }
+
+    window.votingEnded = false;
 
     // Reload albums to reflect changes
     const year = currentDate.getFullYear();
