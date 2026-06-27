@@ -106,6 +106,16 @@ const monthData = {
 let currentDate = new Date();
 let currentUser = null;
 
+const TRACK_PREVIEW_QUERY_PARAM = "previewTrack";
+const TRACK_PREVIEW_USER = {
+  name: "Track Preview",
+  email: "preview@musicframe.local",
+  picture: `data:image/svg+xml;utf8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#667eea"/><stop offset="100%" stop-color="#764ba2"/></linearGradient></defs><rect width="96" height="96" rx="48" fill="url(#g)"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#ffffff">MV</text></svg>',
+  )}`,
+};
+const LOCAL_PREVIEW_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
 const ALBUM_TIMER_STORAGE_KEY = "albumTimerState";
 const ALBUM_TIMER_SEGMENTS = [32, 32, 32, 4];
 const ALBUM_TIMER_PHASE_LABELS = ["Album 1", "Album 2", "Album 3", "Voting"];
@@ -182,6 +192,137 @@ function getMonthKey(date = currentDate) {
   const year = date.getFullYear();
   const month = date.getMonth();
   return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+function isLocalPreviewHost() {
+  return LOCAL_PREVIEW_HOSTS.has(window.location.hostname);
+}
+
+function isTrackPreviewRequested() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(TRACK_PREVIEW_QUERY_PARAM) === "1";
+}
+
+function isTrackPreviewMode() {
+  return currentUser?.email === TRACK_PREVIEW_USER.email;
+}
+
+function syncTrackPreviewUrl(enabled) {
+  const url = new URL(window.location.href);
+  if (enabled) {
+    url.searchParams.set(TRACK_PREVIEW_QUERY_PARAM, "1");
+  } else {
+    url.searchParams.delete(TRACK_PREVIEW_QUERY_PARAM);
+  }
+  window.history.replaceState({}, "", url);
+}
+
+function setTrackPreviewButtonVisibility() {
+  const previewBtn = document.getElementById("trackPreviewBtn");
+  const previewHint = document.getElementById("trackPreviewHint");
+  const shouldShow = isLocalPreviewHost() || isTrackPreviewRequested();
+
+  if (previewBtn) {
+    previewBtn.classList.toggle("hidden", !shouldShow);
+  }
+  if (previewHint) {
+    previewHint.classList.toggle("hidden", !shouldShow);
+  }
+}
+
+function setCurrentDateFromMonthKey(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) {
+    return;
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+  currentDate = new Date(year, month - 1, 1);
+}
+
+async function findFirstPreviewAlbumWithTracks() {
+  if (!db) {
+    return null;
+  }
+
+  const snapshot = await db.collection("albums").get();
+  let previewAlbum = null;
+
+  snapshot.forEach((doc) => {
+    if (previewAlbum) {
+      return;
+    }
+
+    const data = doc.data();
+    if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+      previewAlbum = {
+        id: doc.id,
+        monthKey: data.monthKey,
+      };
+    }
+  });
+
+  return previewAlbum;
+}
+
+async function openTrackPreviewModal() {
+  let album = (window.currentAlbums || []).find(
+    (candidate) => Array.isArray(candidate.tracks) && candidate.tracks.length > 0,
+  );
+
+  if (!album) {
+    const previewAlbum = await findFirstPreviewAlbumWithTracks();
+    if (!previewAlbum) {
+      return false;
+    }
+
+    if (previewAlbum.monthKey && previewAlbum.monthKey !== getMonthKey()) {
+      setCurrentDateFromMonthKey(previewAlbum.monthKey);
+    }
+
+    await updateDisplay();
+
+    album =
+      (window.currentAlbums || []).find(
+        (candidate) => candidate.id === previewAlbum.id,
+      ) ||
+      (window.currentAlbums || []).find(
+        (candidate) => Array.isArray(candidate.tracks) && candidate.tracks.length > 0,
+      );
+  }
+
+  if (!album || !Array.isArray(album.tracks) || album.tracks.length === 0) {
+    return false;
+  }
+
+  await showRateTrackModal(album.id, album.tracks[0], album.trackRatings || {});
+  return true;
+}
+
+async function enterTrackPreviewMode(options = {}) {
+  const { autoOpen = true, updateUrl = true } = options;
+
+  currentUser = { ...TRACK_PREVIEW_USER };
+
+  if (updateUrl) {
+    syncTrackPreviewUrl(true);
+  }
+
+  showMainContent({ loadData: false });
+  await updateDisplay();
+
+  showToast("Track preview mode enabled", 2200);
+
+  if (!autoOpen) {
+    return;
+  }
+
+  const opened = await openTrackPreviewModal();
+  if (!opened) {
+    await showCustomAlert(
+      "No public album with track data was found for preview.",
+      "Track Preview",
+    );
+  }
 }
 
 // Album cover gradients (constant)
@@ -495,7 +636,8 @@ function sanitizeText(text) {
 }
 
 // Show main content after login
-function showMainContent() {
+function showMainContent(options = {}) {
+  const { loadData = true } = options;
   console.log("showMainContent called, currentUser:", currentUser);
 
   const loginOverlay = document.getElementById("loginOverlay");
@@ -531,7 +673,9 @@ function showMainContent() {
   console.log("Main content should now be visible");
 
   // Initialize the main app
-  updateDisplay();
+  if (loadData) {
+    updateDisplay();
+  }
 }
 
 // Custom Alert System
@@ -654,6 +798,10 @@ function showToast(message, duration = 1800) {
 
 // Sign out
 async function signOut() {
+  if (isTrackPreviewMode()) {
+    syncTrackPreviewUrl(false);
+  }
+
   // Clear user session
   localStorage.removeItem("user");
   currentUser = null;
@@ -677,6 +825,15 @@ async function signOut() {
 
 // Initialize the page
 async function init() {
+  setTrackPreviewButtonVisibility();
+
+  if (isTrackPreviewRequested()) {
+    setupEventListeners();
+    initializeAlbumTimer();
+    await enterTrackPreviewMode({ autoOpen: true, updateUrl: false });
+    return;
+  }
+
   // Check if user is already logged in
   const storedUser = localStorage.getItem("user");
   if (storedUser) {
@@ -1122,6 +1279,10 @@ function setupEventListeners() {
       handleGoogleSignIn();
     });
   }
+
+  document.getElementById("trackPreviewBtn")?.addEventListener("click", () => {
+    enterTrackPreviewMode({ autoOpen: true, updateUrl: true });
+  });
 
   document
     .getElementById("prevMonth")
@@ -4664,6 +4825,8 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
     return;
   }
 
+  const isPreviewViewer = isTrackPreviewMode();
+
   // Check if user joined the discussion for this month
   const isParticipant =
     window.currentParticipants &&
@@ -4677,7 +4840,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
 
   const modal = document.getElementById("rateTrackModal");
   const trackNameEl = document.getElementById("rateTrackName");
-  trackNameEl.textContent = `${track.position}. ${track.title}`;
+  trackNameEl.textContent = "";
 
   const songLinkRow = document.getElementById("rateTrackSongLinkRow");
   const songLinkEl = document.getElementById("rateTrackSongLink");
@@ -4700,10 +4863,15 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   try {
     const modalTitle = document.getElementById("rateTrackModalTitle");
     if (modalTitle) {
-      modalTitle.textContent = isParticipant
-        ? "Rate Track"
-        : "Join discussion to rate and take notes";
-      if (!isParticipant) {
+      const trackLabel = `${track.position}. ${track.title}`;
+      if (isPreviewViewer) {
+        modalTitle.innerHTML = `Track Preview: <span class="modal-title-track">${trackLabel}</span>`;
+      } else if (isParticipant) {
+        modalTitle.innerHTML = `Rate Track: <span class="modal-title-track">${trackLabel}</span>`;
+      } else {
+        modalTitle.textContent = "Join discussion to rate and take notes";
+      }
+      if (!isParticipant || isPreviewViewer) {
         modalTitle.classList.add("join-title");
       } else {
         modalTitle.classList.remove("join-title");
@@ -4733,7 +4901,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   ];
 
   // Disable rating and notes if user is not a participant
-  if (!isParticipant) {
+  if (!isParticipant || isPreviewViewer) {
     // Disable rating slider
     const trackSlider = document.getElementById("trackRatingSlider");
     if (trackSlider) trackSlider.disabled = true;
@@ -4745,14 +4913,18 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
       if (b) {
         b.disabled = true;
         b.classList.add("disabled");
-        b.title = "Join the discussion to rate tracks";
+        b.title = isPreviewViewer
+          ? "Track preview is read-only"
+          : "Join the discussion to rate tracks";
       }
     });
 
     // Disable notes textarea and visibility toggle
     if (notesTextarea) {
       notesTextarea.disabled = true;
-      notesTextarea.placeholder = "Join the discussion to add notes";
+      notesTextarea.placeholder = isPreviewViewer
+        ? "Track preview is read-only. Sign in to add notes."
+        : "Join the discussion to add notes";
     }
     if (visibilityToggle) {
       visibilityToggle.disabled = true;
@@ -4889,6 +5061,8 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   // Render avatars on old-style buttons
   renderRatingAvatars(track, allTrackRatings);
 
+  document.documentElement.classList.add("modal-open");
+  document.body.classList.add("modal-open");
   modal.classList.remove("hidden");
 
   const playerContainer = document.querySelector(
@@ -5279,6 +5453,8 @@ async function closeRateTrackModal() {
   }
 
   modal.classList.add("hidden");
+  document.documentElement.classList.remove("modal-open");
+  document.body.classList.remove("modal-open");
 
   // Destroy player if it exists
   if (trackPlayer) {
