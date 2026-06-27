@@ -4818,6 +4818,145 @@ function displayTrackRatings(allTrackRatings, trackKey) {
   container.appendChild(ratingsGrid);
 }
 
+// ── Lyrics localStorage cache ──────────────────────────────────────────────
+const LYRICS_CACHE_TTL = 60 * 24 * 60 * 60 * 1000; // 60 days
+
+function _lyricsCacheKey(artist, title) {
+  // Safe base64 key, no padding chars
+  try {
+    return "lrc_" + btoa(unescape(encodeURIComponent(`${artist}||${title}`))).replace(/[=+/]/g, (c) => ({ "=": "", "+": "-", "/": "_" }[c]));
+  } catch {
+    return "lrc_" + encodeURIComponent(`${artist}||${title}`).slice(0, 80);
+  }
+}
+
+function getCachedLyrics(artist, title) {
+  try {
+    const raw = localStorage.getItem(_lyricsCacheKey(artist, title));
+    if (!raw) return undefined; // not cached
+    const { v, ts } = JSON.parse(raw);
+    if (Date.now() - ts > LYRICS_CACHE_TTL) {
+      localStorage.removeItem(_lyricsCacheKey(artist, title));
+      return undefined;
+    }
+    return v; // null = "no lyrics found" (cached miss), string = lyrics
+  } catch {
+    return undefined;
+  }
+}
+
+function setCachedLyrics(artist, title, lyrics) {
+  try {
+    localStorage.setItem(_lyricsCacheKey(artist, title), JSON.stringify({ v: lyrics, ts: Date.now() }));
+  } catch { /* storage full — ignore */ }
+}
+// ──────────────────────────────────────────────────────────────────────────
+
+// Fetch lyrics from lyrics.ovh and display in modal
+async function fetchAndDisplayLyrics(track, albumId) {
+  const lyricsEl = document.getElementById("trackLyricsContent");
+  const lyricsColumn = document.getElementById("trackLyricsColumn");
+  const searchText = document.getElementById("lyricsSearchingText");
+  const ellipsisEl = document.getElementById("lyricsEllipsis");
+  const geniusHeaderBtn = document.getElementById("lyricsGeniusHeaderBtn");
+  if (!lyricsEl) return;
+
+  // Hide column, reset layout, hide header button
+  if (lyricsColumn) lyricsColumn.classList.add("hidden");
+  const layout = document.querySelector("#rateTrackModal .track-modal-layout");
+  if (layout) layout.classList.remove("has-lyrics");
+  if (geniusHeaderBtn) geniusHeaderBtn.classList.add("hidden");
+  lyricsEl.textContent = "";
+
+  try {
+    const album = (window.currentAlbums || []).find((a) => a.id === albumId);
+    const artist = (album && album.artist) ? album.artist.trim() : "";
+    // Strip common suffixes that break matching: (feat. X), (Remastered), etc.
+    const title = (track.title || "").trim().replace(/\s*[\(\[].*?[\)\]]/g, "").trim();
+
+    if (!artist || !title) return;
+
+    // ── Check localStorage cache first ──
+    const cached = getCachedLyrics(artist, title);
+    if (cached !== undefined) {
+      if (searchText) searchText.classList.add("hidden");
+      // cached === null means we already know there are no lyrics
+      if (cached) {
+        lyricsEl.textContent = cached;
+        if (lyricsColumn) lyricsColumn.classList.remove("hidden");
+        if (layout) layout.classList.add("has-lyrics");
+      } else {
+        // Show Genius button in header for cached misses
+        if (geniusHeaderBtn) {
+          geniusHeaderBtn.classList.remove("hidden");
+          const geniusUrl = `https://genius.com/search?q=${encodeURIComponent(artist + " " + title)}`;
+          geniusHeaderBtn.onclick = () => window.open(geniusUrl, "_blank");
+        }
+      }
+      return; // either way, no network needed
+    }
+
+    // Not cached — show search text and animate ellipsis
+    if (searchText) searchText.classList.remove("hidden");
+
+    // Start ellipsis animation
+    let dotCount = 1;
+    const ellipsisInterval = setInterval(() => {
+      if (ellipsisEl) {
+        dotCount = (dotCount % 3) + 1;
+        ellipsisEl.textContent = ".".repeat(dotCount);
+      }
+    }, 500);
+
+    // Try lrclib.net direct lookup
+    const lrclibUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
+    let lyrics = null;
+
+    try {
+      const res = await fetch(lrclibUrl);
+      if (res.ok) {
+        const data = await res.json();
+        lyrics = data.plainLyrics || null;
+      }
+    } catch { /* fall through */ }
+
+    // Fallback: lrclib search endpoint
+    if (!lyrics) {
+      try {
+        const searchUrl = `https://lrclib.net/api/search?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
+        const res = await fetch(searchUrl);
+        if (res.ok) {
+          const results = await res.json();
+          if (results && results.length > 0) {
+            lyrics = results[0].plainLyrics || null;
+          }
+        }
+      } catch { /* fall through */ }
+    }
+
+    clearInterval(ellipsisInterval);
+    if (searchText) searchText.classList.add("hidden");
+
+    // Cache result (null = confirmed no lyrics, so we skip future lookups)
+    setCachedLyrics(artist, title, lyrics);
+
+    if (lyrics) {
+      lyricsEl.textContent = lyrics;
+      if (lyricsColumn) lyricsColumn.classList.remove("hidden");
+      if (layout) layout.classList.add("has-lyrics");
+    } else {
+      // Show Genius button in header when no lyrics found
+      if (geniusHeaderBtn) {
+        geniusHeaderBtn.classList.remove("hidden");
+        const geniusUrl = `https://genius.com/search?q=${encodeURIComponent(artist + " " + title)}`;
+        geniusHeaderBtn.onclick = () => window.open(geniusUrl, "_blank");
+      }
+    }
+  } catch {
+    if (searchText) searchText.classList.add("hidden");
+  }
+}
+
 // Show rate track modal
 async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   if (!currentUser) {
@@ -5064,6 +5203,9 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   document.documentElement.classList.add("modal-open");
   document.body.classList.add("modal-open");
   modal.classList.remove("hidden");
+
+  // Fetch and display lyrics
+  fetchAndDisplayLyrics(track, albumId);
 
   const playerContainer = document.querySelector(
     "#rateTrackModal .track-player-container",

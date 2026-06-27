@@ -577,14 +577,25 @@
       <div class="modal-container modal-container-large">
         <div class="modal-header">
           <h2 id="rateTrackModalTitle">Rate Track</h2>
-          <button
-            type="button"
-            class="modal-close"
-            id="closeRateTrackModal"
-            aria-label="Close"
-          >
-            &times;
-          </button>
+          <div class="modal-header-right">
+            <span id="lyricsSearchingText" class="lyrics-searching-text hidden">Searching for lyrics<span id="lyricsEllipsis">...</span></span>
+            <button
+              type="button"
+              class="lyrics-search-genius-header hidden"
+              id="lyricsGeniusHeaderBtn"
+              title="Search for Lyrics on Genius"
+            >
+              No lyrics found, Search on Genius ↗
+            </button>
+            <button
+              type="button"
+              class="modal-close"
+              id="closeRateTrackModal"
+              aria-label="Close"
+            >
+              &times;
+            </button>
+          </div>
         </div>
         <div class="modal-body">
           <p class="modal-description" id="rateTrackName"></p>
@@ -656,6 +667,16 @@
                 <button class="rating-btn disliked-btn" id="rateDisliked" title="Dis">
                   <span class="rating-emoji">👎</span>
                 </button>
+              </div>
+            </div>
+
+            <!-- Lyrics Column (hidden until lyrics are found) -->
+            <div class="track-modal-lyrics-column hidden" id="trackLyricsColumn">
+              <div class="track-lyrics-section">
+                <div class="track-lyrics-header">
+                  <label>Lyrics</label>
+                </div>
+                <div id="trackLyricsContent" class="track-lyrics-content"></div>
               </div>
             </div>
 
