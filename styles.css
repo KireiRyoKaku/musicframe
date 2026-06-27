@@ -3039,10 +3039,49 @@ body.modal-open {
 
   .modal-header {
     padding: 20px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
   }
 
-  .modal-body {
-    padding: 20px;
+  #rateTrackModal .modal-header {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  #rateTrackModal .modal-header h2 {
+    order: 1;
+    flex-basis: 100%;
+    font-size: 1.1rem;
+    margin: 0;
+  }
+
+  .modal-header-right {
+    order: 2;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: space-between;
+  }
+
+  .lyrics-searching-text {
+    font-size: 0.65rem;
+    flex: 1;
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  .lyrics-search-genius-header {
+    font-size: 0.65rem;
+    padding: 3px 6px;
+    flex-shrink: 0;
+  }
+
+  .modal-close {
+    flex-shrink: 0;
   }
 
   .modal-buttons {
@@ -3253,6 +3292,39 @@ body.modal-open {
 
   .other-users-notes {
     margin-top: 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  #rateTrackModal > .modal-container {
+    width: 95%;
+    max-width: 95%;
+    height: 85vh;
+  }
+
+  .track-modal-layout {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .track-modal-layout.has-lyrics {
+    grid-template-columns: 1fr;
+  }
+
+  .track-modal-main {
+    gap: 8px;
+  }
+
+  .track-notes-textarea {
+    min-height: 100px;
+  }
+
+  .other-users-notes {
+    margin-top: 16px;
+  }
+
+  .track-lyrics-content {
+    max-height: 150px;
   }
 }
 
