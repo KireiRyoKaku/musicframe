@@ -5109,6 +5109,10 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   // Load user's current numeric rating for this track
   const userRating = allTrackRatings[currentUser.email];
   const currentTrackRating = userRating?.ratings?.[trackKey];
+  const currentOldStyleRating = getActiveOldStyleTrackRating(
+    userRating,
+    trackKey,
+  );
 
   if (currentTrackRating !== undefined) {
     selectRatingGridValue(
@@ -5119,6 +5123,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   } else {
     clearRatingGridSelection("trackRatingGrid", "trackRatingValue");
   }
+  syncOldStyleTrackRatingButtons(currentOldStyleRating);
 
   // Load track rating visibility state
   const trackRatingVisToggle = document.getElementById(
@@ -6201,6 +6206,39 @@ async function closeAlbumNoteModal() {
 }
 
 // Apply old-style track rating (favorite/least/liked/disliked)
+const TRACK_RATING_BUTTON_IDS = {
+  favorite: "rateFavorite",
+  least: "rateLeast",
+  liked: "rateLiked",
+  disliked: "rateDisliked",
+};
+
+function getActiveOldStyleTrackRating(userRating, trackKey) {
+  if (userRating?.favorite === trackKey) return "favorite";
+  if (userRating?.leastFavorite === trackKey) return "least";
+  if (Array.isArray(userRating?.liked) && userRating.liked.includes(trackKey)) {
+    return "liked";
+  }
+  if (
+    Array.isArray(userRating?.disliked) &&
+    userRating.disliked.includes(trackKey)
+  ) {
+    return "disliked";
+  }
+  return null;
+}
+
+function syncOldStyleTrackRatingButtons(selectedRatingType) {
+  Object.entries(TRACK_RATING_BUTTON_IDS).forEach(([ratingType, buttonId]) => {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    const isSelected = selectedRatingType === ratingType;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+  });
+}
+
 let _applyingTrackRating = false;
 async function applyTrackRating(ratingType) {
   if (_applyingTrackRating) return;
@@ -6235,50 +6273,45 @@ async function _applyTrackRatingInner(ratingType) {
   // Clone current ratings
   const updatedRatings = { ...currentRatings };
   const newUserRating = { ...userRating };
+  const currentSelection = getActiveOldStyleTrackRating(userRating, trackKey);
 
-  if (ratingType === "favorite") {
+  const removeTrackFromArray = (arrayValue) => {
+    if (!Array.isArray(arrayValue)) return arrayValue;
+    const nextValue = arrayValue.filter((key) => key !== trackKey);
+    return nextValue.length > 0 ? nextValue : undefined;
+  };
+
+  const clearTrackSpecificState = () => {
     if (newUserRating.favorite === trackKey) {
       delete newUserRating.favorite;
-    } else {
-      newUserRating.favorite = trackKey;
     }
-  } else if (ratingType === "least") {
     if (newUserRating.leastFavorite === trackKey) {
       delete newUserRating.leastFavorite;
-    } else {
+    }
+    newUserRating.liked = removeTrackFromArray(newUserRating.liked);
+    newUserRating.disliked = removeTrackFromArray(newUserRating.disliked);
+  };
+
+  clearTrackSpecificState();
+
+  if (currentSelection !== ratingType) {
+    if (ratingType === "favorite") {
+      newUserRating.favorite = trackKey;
+    } else if (ratingType === "least") {
       newUserRating.leastFavorite = trackKey;
-    }
-  } else if (ratingType === "liked") {
-    const liked = newUserRating.liked || [];
-    if (liked.includes(trackKey)) {
-      newUserRating.liked = liked.filter((k) => k !== trackKey);
-    } else {
+    } else if (ratingType === "liked") {
+      const liked = Array.isArray(newUserRating.liked) ? newUserRating.liked : [];
       newUserRating.liked = [...liked, trackKey];
-      if (newUserRating.disliked) {
-        newUserRating.disliked = newUserRating.disliked.filter(
-          (k) => k !== trackKey,
-        );
-      }
-    }
-  } else if (ratingType === "disliked") {
-    const disliked = newUserRating.disliked || [];
-    if (disliked.includes(trackKey)) {
-      newUserRating.disliked = disliked.filter((k) => k !== trackKey);
-    } else {
+    } else if (ratingType === "disliked") {
+      const disliked = Array.isArray(newUserRating.disliked)
+        ? newUserRating.disliked
+        : [];
       newUserRating.disliked = [...disliked, trackKey];
-      if (newUserRating.liked) {
-        newUserRating.liked = newUserRating.liked.filter((k) => k !== trackKey);
-      }
     }
   }
 
-  // Clean up empty arrays
-  if (newUserRating.liked && newUserRating.liked.length === 0) {
-    delete newUserRating.liked;
-  }
-  if (newUserRating.disliked && newUserRating.disliked.length === 0) {
-    delete newUserRating.disliked;
-  }
+  if (!newUserRating.liked) delete newUserRating.liked;
+  if (!newUserRating.disliked) delete newUserRating.disliked;
 
   if (Object.keys(newUserRating).length > 0) {
     updatedRatings[userEmail] = newUserRating;
@@ -6297,6 +6330,9 @@ async function _applyTrackRatingInner(ratingType) {
 
       // Refresh avatars in the open modal
       renderRatingAvatars(track, updatedRatings);
+      syncOldStyleTrackRatingButtons(
+        getActiveOldStyleTrackRating(newUserRating, trackKey),
+      );
 
       if (window.currentAlbums) {
         const albumIndex = window.currentAlbums.findIndex(
