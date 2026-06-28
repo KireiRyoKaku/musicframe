@@ -2284,11 +2284,12 @@ body.modal-open {
   border-radius: 8px;
   overflow: hidden;
   background: #000;
+  height: 200px;
 }
 
 #trackPlayer {
   width: 100%;
-  height: 110px;
+  height: 100%;
 }
 
 .modal-input {
@@ -3297,34 +3298,88 @@ body.modal-open {
 
 @media (max-width: 640px) {
   #rateTrackModal > .modal-container {
-    width: 95%;
-    max-width: 95%;
-    height: 85vh;
+    width: 96%;
+    max-width: 96%;
+    height: auto;
+    max-height: min(92vh, calc(100dvh - 16px));
+    overflow: hidden;
   }
 
-  .track-modal-layout {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  #rateTrackModal .modal-body {
+    display: block;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
+  .track-modal-layout,
   .track-modal-layout.has-lyrics {
     grid-template-columns: 1fr;
+    gap: 10px;
+    align-content: start;
+    flex: none;
   }
 
-  .track-modal-main {
+  .track-modal-main,
+  .track-modal-notes-column,
+  .track-modal-lyrics-column {
+    display: flex;
+    min-height: auto;
+    overflow: visible;
     gap: 8px;
   }
 
+  .track-modal-lyrics-column {
+    order: 2;
+  }
+
+  .track-modal-notes-column {
+    order: 3;
+  }
+
+  .track-player-container {
+    height: 140px;
+  }
+
+  .rating-options {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .rating-btn {
+    min-width: 0;
+    padding: 8px 4px;
+  }
+
+  #trackPlayer {
+    height: 100%;
+  }
+
   .track-notes-textarea {
-    min-height: 100px;
+    min-height: 96px;
   }
 
   .other-users-notes {
-    margin-top: 16px;
+    margin-top: 12px;
+    max-height: none;
+  }
+
+  .track-lyrics-section {
+    flex: none;
+    max-height: none;
   }
 
   .track-lyrics-content {
-    max-height: 150px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  #rateTrackModal .modal-buttons {
+    margin-top: 12px;
+    padding-top: 0;
+  }
+
+  #rateTrackModal .modal-btn {
+    width: 100%;
   }
 }
 

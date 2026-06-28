@@ -5566,9 +5566,14 @@ function loadTrackPlayer(videoId) {
     trackPlayer.destroy();
   }
 
+  const playerContainer = document.querySelector(
+    "#rateTrackModal .track-player-container",
+  );
+  const playerHeight = playerContainer?.clientHeight || 200;
+
   // Create new player
   trackPlayer = new YT.Player("trackPlayer", {
-    height: "200",
+    height: String(playerHeight),
     width: "100%",
     videoId: videoId,
     playerVars: {
