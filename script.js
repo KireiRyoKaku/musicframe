@@ -106,6 +106,16 @@ const monthData = {
 let currentDate = new Date();
 let currentUser = null;
 
+const TRACK_PREVIEW_QUERY_PARAM = "previewTrack";
+const TRACK_PREVIEW_USER = {
+  name: "Track Preview",
+  email: "preview@musicframe.local",
+  picture: `data:image/svg+xml;utf8,${encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#667eea"/><stop offset="100%" stop-color="#764ba2"/></linearGradient></defs><rect width="96" height="96" rx="48" fill="url(#g)"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-size="34" fill="#ffffff">MV</text></svg>',
+  )}`,
+};
+const LOCAL_PREVIEW_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
 const ALBUM_TIMER_STORAGE_KEY = "albumTimerState";
 const ALBUM_TIMER_SEGMENTS = [32, 32, 32, 4];
 const ALBUM_TIMER_PHASE_LABELS = ["Album 1", "Album 2", "Album 3", "Voting"];
@@ -182,6 +192,139 @@ function getMonthKey(date = currentDate) {
   const year = date.getFullYear();
   const month = date.getMonth();
   return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+function isLocalPreviewHost() {
+  return LOCAL_PREVIEW_HOSTS.has(window.location.hostname);
+}
+
+function isTrackPreviewRequested() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(TRACK_PREVIEW_QUERY_PARAM) === "1";
+}
+
+function isTrackPreviewMode() {
+  return currentUser?.email === TRACK_PREVIEW_USER.email;
+}
+
+function syncTrackPreviewUrl(enabled) {
+  const url = new URL(window.location.href);
+  if (enabled) {
+    url.searchParams.set(TRACK_PREVIEW_QUERY_PARAM, "1");
+  } else {
+    url.searchParams.delete(TRACK_PREVIEW_QUERY_PARAM);
+  }
+  window.history.replaceState({}, "", url);
+}
+
+function setTrackPreviewButtonVisibility() {
+  const previewBtn = document.getElementById("trackPreviewBtn");
+  const previewHint = document.getElementById("trackPreviewHint");
+  const shouldShow = isLocalPreviewHost() || isTrackPreviewRequested();
+
+  if (previewBtn) {
+    previewBtn.classList.toggle("hidden", !shouldShow);
+  }
+  if (previewHint) {
+    previewHint.classList.toggle("hidden", !shouldShow);
+  }
+}
+
+function setCurrentDateFromMonthKey(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) {
+    return;
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+  currentDate = new Date(year, month - 1, 1);
+}
+
+async function findFirstPreviewAlbumWithTracks() {
+  if (!db) {
+    return null;
+  }
+
+  const snapshot = await db.collection("albums").get();
+  let previewAlbum = null;
+
+  snapshot.forEach((doc) => {
+    if (previewAlbum) {
+      return;
+    }
+
+    const data = doc.data();
+    if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+      previewAlbum = {
+        id: doc.id,
+        monthKey: data.monthKey,
+      };
+    }
+  });
+
+  return previewAlbum;
+}
+
+async function openTrackPreviewModal() {
+  let album = (window.currentAlbums || []).find(
+    (candidate) =>
+      Array.isArray(candidate.tracks) && candidate.tracks.length > 0,
+  );
+
+  if (!album) {
+    const previewAlbum = await findFirstPreviewAlbumWithTracks();
+    if (!previewAlbum) {
+      return false;
+    }
+
+    if (previewAlbum.monthKey && previewAlbum.monthKey !== getMonthKey()) {
+      setCurrentDateFromMonthKey(previewAlbum.monthKey);
+    }
+
+    await updateDisplay();
+
+    album =
+      (window.currentAlbums || []).find(
+        (candidate) => candidate.id === previewAlbum.id,
+      ) ||
+      (window.currentAlbums || []).find(
+        (candidate) =>
+          Array.isArray(candidate.tracks) && candidate.tracks.length > 0,
+      );
+  }
+
+  if (!album || !Array.isArray(album.tracks) || album.tracks.length === 0) {
+    return false;
+  }
+
+  await showRateTrackModal(album.id, album.tracks[0], album.trackRatings || {});
+  return true;
+}
+
+async function enterTrackPreviewMode(options = {}) {
+  const { autoOpen = true, updateUrl = true } = options;
+
+  currentUser = { ...TRACK_PREVIEW_USER };
+
+  if (updateUrl) {
+    syncTrackPreviewUrl(true);
+  }
+
+  showMainContent({ loadData: false });
+  await updateDisplay();
+
+  showToast("Track preview mode enabled", 2200);
+
+  if (!autoOpen) {
+    return;
+  }
+
+  const opened = await openTrackPreviewModal();
+  if (!opened) {
+    await showCustomAlert(
+      "No public album with track data was found for preview.",
+      "Track Preview",
+    );
+  }
 }
 
 // Album cover gradients (constant)
@@ -495,7 +638,8 @@ function sanitizeText(text) {
 }
 
 // Show main content after login
-function showMainContent() {
+function showMainContent(options = {}) {
+  const { loadData = true } = options;
   console.log("showMainContent called, currentUser:", currentUser);
 
   const loginOverlay = document.getElementById("loginOverlay");
@@ -531,7 +675,9 @@ function showMainContent() {
   console.log("Main content should now be visible");
 
   // Initialize the main app
-  updateDisplay();
+  if (loadData) {
+    updateDisplay();
+  }
 }
 
 // Custom Alert System
@@ -654,6 +800,10 @@ function showToast(message, duration = 1800) {
 
 // Sign out
 async function signOut() {
+  if (isTrackPreviewMode()) {
+    syncTrackPreviewUrl(false);
+  }
+
   // Clear user session
   localStorage.removeItem("user");
   currentUser = null;
@@ -677,6 +827,15 @@ async function signOut() {
 
 // Initialize the page
 async function init() {
+  setTrackPreviewButtonVisibility();
+
+  if (isTrackPreviewRequested()) {
+    setupEventListeners();
+    initializeAlbumTimer();
+    await enterTrackPreviewMode({ autoOpen: true, updateUrl: false });
+    return;
+  }
+
   // Check if user is already logged in
   const storedUser = localStorage.getItem("user");
   if (storedUser) {
@@ -1122,6 +1281,10 @@ function setupEventListeners() {
       handleGoogleSignIn();
     });
   }
+
+  document.getElementById("trackPreviewBtn")?.addEventListener("click", () => {
+    enterTrackPreviewMode({ autoOpen: true, updateUrl: true });
+  });
 
   document
     .getElementById("prevMonth")
@@ -3337,19 +3500,19 @@ function updateParticipants(participants) {
     }
 
     // Add click event: on mobile scroll to that participant's album, on desktop toggle highlight
-    div.addEventListener("click", () => {
-      try {
-        const isMobile = window.matchMedia("(max-width: 640px)").matches;
-        if (isMobile) {
-          scrollToAlbumByEmail(participant.email);
-        } else {
-          toggleHighlightAlbum(participant.email);
-        }
-      } catch (e) {
-        // fallback to highlight
-        toggleHighlightAlbum(participant.email);
-      }
-    });
+    // div.addEventListener("click", () => {
+    //   try {
+    //     const isMobile = window.matchMedia("(max-width: 640px)").matches;
+    //     if (isMobile) {
+    //       scrollToAlbumByEmail(participant.email);
+    //     } else {
+    //       toggleHighlightAlbum(participant.email);
+    //     }
+    //   } catch (e) {
+    //     // fallback to highlight
+    //     toggleHighlightAlbum(participant.email);
+    //   }
+    // });
 
     participantsList.appendChild(div);
   });
@@ -4657,12 +4820,171 @@ function displayTrackRatings(allTrackRatings, trackKey) {
   container.appendChild(ratingsGrid);
 }
 
+// ── Lyrics localStorage cache ──────────────────────────────────────────────
+const LYRICS_CACHE_TTL = 60 * 24 * 60 * 60 * 1000; // 60 days
+
+function _lyricsCacheKey(artist, title) {
+  // Safe base64 key, no padding chars
+  try {
+    return (
+      "lrc_" +
+      btoa(unescape(encodeURIComponent(`${artist}||${title}`))).replace(
+        /[=+/]/g,
+        (c) => ({ "=": "", "+": "-", "/": "_" })[c],
+      )
+    );
+  } catch {
+    return "lrc_" + encodeURIComponent(`${artist}||${title}`).slice(0, 80);
+  }
+}
+
+function getCachedLyrics(artist, title) {
+  try {
+    const raw = localStorage.getItem(_lyricsCacheKey(artist, title));
+    if (!raw) return undefined; // not cached
+    const { v, ts } = JSON.parse(raw);
+    if (Date.now() - ts > LYRICS_CACHE_TTL) {
+      localStorage.removeItem(_lyricsCacheKey(artist, title));
+      return undefined;
+    }
+    return v; // null = "no lyrics found" (cached miss), string = lyrics
+  } catch {
+    return undefined;
+  }
+}
+
+function setCachedLyrics(artist, title, lyrics) {
+  try {
+    localStorage.setItem(
+      _lyricsCacheKey(artist, title),
+      JSON.stringify({ v: lyrics, ts: Date.now() }),
+    );
+  } catch {
+    /* storage full — ignore */
+  }
+}
+// ──────────────────────────────────────────────────────────────────────────
+
+// Fetch lyrics from lyrics.ovh and display in modal
+async function fetchAndDisplayLyrics(track, albumId) {
+  const lyricsEl = document.getElementById("trackLyricsContent");
+  const lyricsColumn = document.getElementById("trackLyricsColumn");
+  const searchText = document.getElementById("lyricsSearchingText");
+  const ellipsisEl = document.getElementById("lyricsEllipsis");
+  const geniusHeaderBtn = document.getElementById("lyricsGeniusHeaderBtn");
+  if (!lyricsEl) return;
+
+  // Hide column, reset layout, hide header button
+  if (lyricsColumn) lyricsColumn.classList.add("hidden");
+  const layout = document.querySelector("#rateTrackModal .track-modal-layout");
+  if (layout) layout.classList.remove("has-lyrics");
+  if (geniusHeaderBtn) geniusHeaderBtn.classList.add("hidden");
+  lyricsEl.textContent = "";
+
+  try {
+    const album = (window.currentAlbums || []).find((a) => a.id === albumId);
+    const artist = album && album.artist ? album.artist.trim() : "";
+    // Strip common suffixes that break matching: (feat. X), (Remastered), etc.
+    const title = (track.title || "")
+      .trim()
+      .replace(/\s*[\(\[].*?[\)\]]/g, "")
+      .trim();
+
+    if (!artist || !title) return;
+
+    // ── Check localStorage cache first ──
+    const cached = getCachedLyrics(artist, title);
+    if (cached !== undefined) {
+      if (searchText) searchText.classList.add("hidden");
+      // cached === null means we already know there are no lyrics
+      if (cached) {
+        lyricsEl.textContent = cached;
+        if (lyricsColumn) lyricsColumn.classList.remove("hidden");
+        if (layout) layout.classList.add("has-lyrics");
+      } else {
+        // Show Genius button in header for cached misses
+        if (geniusHeaderBtn) {
+          geniusHeaderBtn.classList.remove("hidden");
+          const geniusUrl = `https://genius.com/search?q=${encodeURIComponent(artist + " " + title)}`;
+          geniusHeaderBtn.onclick = () => window.open(geniusUrl, "_blank");
+        }
+      }
+      return; // either way, no network needed
+    }
+
+    // Not cached — show search text and animate ellipsis
+    if (searchText) searchText.classList.remove("hidden");
+
+    // Start ellipsis animation
+    let dotCount = 1;
+    const ellipsisInterval = setInterval(() => {
+      if (ellipsisEl) {
+        dotCount = (dotCount % 3) + 1;
+        ellipsisEl.textContent = ".".repeat(dotCount);
+      }
+    }, 500);
+
+    // Try lrclib.net direct lookup
+    const lrclibUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
+    let lyrics = null;
+
+    try {
+      const res = await fetch(lrclibUrl);
+      if (res.ok) {
+        const data = await res.json();
+        lyrics = data.plainLyrics || null;
+      }
+    } catch {
+      /* fall through */
+    }
+
+    // Fallback: lrclib search endpoint
+    if (!lyrics) {
+      try {
+        const searchUrl = `https://lrclib.net/api/search?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
+        const res = await fetch(searchUrl);
+        if (res.ok) {
+          const results = await res.json();
+          if (results && results.length > 0) {
+            lyrics = results[0].plainLyrics || null;
+          }
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+
+    clearInterval(ellipsisInterval);
+    if (searchText) searchText.classList.add("hidden");
+
+    // Cache result (null = confirmed no lyrics, so we skip future lookups)
+    setCachedLyrics(artist, title, lyrics);
+
+    if (lyrics) {
+      lyricsEl.textContent = lyrics;
+      if (lyricsColumn) lyricsColumn.classList.remove("hidden");
+      if (layout) layout.classList.add("has-lyrics");
+    } else {
+      // Show Genius button in header when no lyrics found
+      if (geniusHeaderBtn) {
+        geniusHeaderBtn.classList.remove("hidden");
+        const geniusUrl = `https://genius.com/search?q=${encodeURIComponent(artist + " " + title)}`;
+        geniusHeaderBtn.onclick = () => window.open(geniusUrl, "_blank");
+      }
+    }
+  } catch {
+    if (searchText) searchText.classList.add("hidden");
+  }
+}
+
 // Show rate track modal
 async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   if (!currentUser) {
     await showCustomAlert("You must be signed in to rate tracks.");
     return;
   }
+
+  const isPreviewViewer = isTrackPreviewMode();
 
   // Check if user joined the discussion for this month
   const isParticipant =
@@ -4677,7 +4999,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
 
   const modal = document.getElementById("rateTrackModal");
   const trackNameEl = document.getElementById("rateTrackName");
-  trackNameEl.textContent = `${track.position}. ${track.title}`;
+  trackNameEl.textContent = "";
 
   const songLinkRow = document.getElementById("rateTrackSongLinkRow");
   const songLinkEl = document.getElementById("rateTrackSongLink");
@@ -4700,10 +5022,15 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   try {
     const modalTitle = document.getElementById("rateTrackModalTitle");
     if (modalTitle) {
-      modalTitle.textContent = isParticipant
-        ? "Rate Track"
-        : "Join discussion to rate and take notes";
-      if (!isParticipant) {
+      const trackLabel = `${track.position}. ${track.title}`;
+      if (isPreviewViewer) {
+        modalTitle.innerHTML = `Track Preview: <span class="modal-title-track">${trackLabel}</span>`;
+      } else if (isParticipant) {
+        modalTitle.innerHTML = `Rate Track: <span class="modal-title-track">${trackLabel}</span>`;
+      } else {
+        modalTitle.textContent = "Join discussion to rate and take notes";
+      }
+      if (!isParticipant || isPreviewViewer) {
         modalTitle.classList.add("join-title");
       } else {
         modalTitle.classList.remove("join-title");
@@ -4733,7 +5060,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   ];
 
   // Disable rating and notes if user is not a participant
-  if (!isParticipant) {
+  if (!isParticipant || isPreviewViewer) {
     // Disable rating slider
     const trackSlider = document.getElementById("trackRatingSlider");
     if (trackSlider) trackSlider.disabled = true;
@@ -4745,14 +5072,18 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
       if (b) {
         b.disabled = true;
         b.classList.add("disabled");
-        b.title = "Join the discussion to rate tracks";
+        b.title = isPreviewViewer
+          ? "Track preview is read-only"
+          : "Join the discussion to rate tracks";
       }
     });
 
     // Disable notes textarea and visibility toggle
     if (notesTextarea) {
       notesTextarea.disabled = true;
-      notesTextarea.placeholder = "Join the discussion to add notes";
+      notesTextarea.placeholder = isPreviewViewer
+        ? "Track preview is read-only. Sign in to add notes."
+        : "Join the discussion to add notes";
     }
     if (visibilityToggle) {
       visibilityToggle.disabled = true;
@@ -4798,6 +5129,10 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   // Load user's current numeric rating for this track
   const userRating = allTrackRatings[currentUser.email];
   const currentTrackRating = userRating?.ratings?.[trackKey];
+  const currentOldStyleRating = getActiveOldStyleTrackRating(
+    userRating,
+    trackKey,
+  );
 
   if (currentTrackRating !== undefined) {
     selectRatingGridValue(
@@ -4808,6 +5143,7 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   } else {
     clearRatingGridSelection("trackRatingGrid", "trackRatingValue");
   }
+  syncOldStyleTrackRatingButtons(currentOldStyleRating);
 
   // Load track rating visibility state
   const trackRatingVisToggle = document.getElementById(
@@ -4889,7 +5225,12 @@ async function showRateTrackModal(albumId, track, allTrackRatings = {}) {
   // Render avatars on old-style buttons
   renderRatingAvatars(track, allTrackRatings);
 
+  document.documentElement.classList.add("modal-open");
+  document.body.classList.add("modal-open");
   modal.classList.remove("hidden");
+
+  // Fetch and display lyrics
+  fetchAndDisplayLyrics(track, albumId);
 
   const playerContainer = document.querySelector(
     "#rateTrackModal .track-player-container",
@@ -5250,9 +5591,14 @@ function loadTrackPlayer(videoId) {
     trackPlayer.destroy();
   }
 
+  const playerContainer = document.querySelector(
+    "#rateTrackModal .track-player-container",
+  );
+  const playerHeight = playerContainer?.clientHeight || 200;
+
   // Create new player
   trackPlayer = new YT.Player("trackPlayer", {
-    height: "200",
+    height: String(playerHeight),
     width: "100%",
     videoId: videoId,
     playerVars: {
@@ -5279,6 +5625,8 @@ async function closeRateTrackModal() {
   }
 
   modal.classList.add("hidden");
+  document.documentElement.classList.remove("modal-open");
+  document.body.classList.remove("modal-open");
 
   // Destroy player if it exists
   if (trackPlayer) {
@@ -5878,6 +6226,39 @@ async function closeAlbumNoteModal() {
 }
 
 // Apply old-style track rating (favorite/least/liked/disliked)
+const TRACK_RATING_BUTTON_IDS = {
+  favorite: "rateFavorite",
+  least: "rateLeast",
+  liked: "rateLiked",
+  disliked: "rateDisliked",
+};
+
+function getActiveOldStyleTrackRating(userRating, trackKey) {
+  if (userRating?.favorite === trackKey) return "favorite";
+  if (userRating?.leastFavorite === trackKey) return "least";
+  if (Array.isArray(userRating?.liked) && userRating.liked.includes(trackKey)) {
+    return "liked";
+  }
+  if (
+    Array.isArray(userRating?.disliked) &&
+    userRating.disliked.includes(trackKey)
+  ) {
+    return "disliked";
+  }
+  return null;
+}
+
+function syncOldStyleTrackRatingButtons(selectedRatingType) {
+  Object.entries(TRACK_RATING_BUTTON_IDS).forEach(([ratingType, buttonId]) => {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+
+    const isSelected = selectedRatingType === ratingType;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+  });
+}
+
 let _applyingTrackRating = false;
 async function applyTrackRating(ratingType) {
   if (_applyingTrackRating) return;
@@ -5912,50 +6293,47 @@ async function _applyTrackRatingInner(ratingType) {
   // Clone current ratings
   const updatedRatings = { ...currentRatings };
   const newUserRating = { ...userRating };
+  const currentSelection = getActiveOldStyleTrackRating(userRating, trackKey);
 
-  if (ratingType === "favorite") {
+  const removeTrackFromArray = (arrayValue) => {
+    if (!Array.isArray(arrayValue)) return arrayValue;
+    const nextValue = arrayValue.filter((key) => key !== trackKey);
+    return nextValue.length > 0 ? nextValue : undefined;
+  };
+
+  const clearTrackSpecificState = () => {
     if (newUserRating.favorite === trackKey) {
       delete newUserRating.favorite;
-    } else {
-      newUserRating.favorite = trackKey;
     }
-  } else if (ratingType === "least") {
     if (newUserRating.leastFavorite === trackKey) {
       delete newUserRating.leastFavorite;
-    } else {
+    }
+    newUserRating.liked = removeTrackFromArray(newUserRating.liked);
+    newUserRating.disliked = removeTrackFromArray(newUserRating.disliked);
+  };
+
+  clearTrackSpecificState();
+
+  if (currentSelection !== ratingType) {
+    if (ratingType === "favorite") {
+      newUserRating.favorite = trackKey;
+    } else if (ratingType === "least") {
       newUserRating.leastFavorite = trackKey;
-    }
-  } else if (ratingType === "liked") {
-    const liked = newUserRating.liked || [];
-    if (liked.includes(trackKey)) {
-      newUserRating.liked = liked.filter((k) => k !== trackKey);
-    } else {
+    } else if (ratingType === "liked") {
+      const liked = Array.isArray(newUserRating.liked)
+        ? newUserRating.liked
+        : [];
       newUserRating.liked = [...liked, trackKey];
-      if (newUserRating.disliked) {
-        newUserRating.disliked = newUserRating.disliked.filter(
-          (k) => k !== trackKey,
-        );
-      }
-    }
-  } else if (ratingType === "disliked") {
-    const disliked = newUserRating.disliked || [];
-    if (disliked.includes(trackKey)) {
-      newUserRating.disliked = disliked.filter((k) => k !== trackKey);
-    } else {
+    } else if (ratingType === "disliked") {
+      const disliked = Array.isArray(newUserRating.disliked)
+        ? newUserRating.disliked
+        : [];
       newUserRating.disliked = [...disliked, trackKey];
-      if (newUserRating.liked) {
-        newUserRating.liked = newUserRating.liked.filter((k) => k !== trackKey);
-      }
     }
   }
 
-  // Clean up empty arrays
-  if (newUserRating.liked && newUserRating.liked.length === 0) {
-    delete newUserRating.liked;
-  }
-  if (newUserRating.disliked && newUserRating.disliked.length === 0) {
-    delete newUserRating.disliked;
-  }
+  if (!newUserRating.liked) delete newUserRating.liked;
+  if (!newUserRating.disliked) delete newUserRating.disliked;
 
   if (Object.keys(newUserRating).length > 0) {
     updatedRatings[userEmail] = newUserRating;
@@ -5974,6 +6352,9 @@ async function _applyTrackRatingInner(ratingType) {
 
       // Refresh avatars in the open modal
       renderRatingAvatars(track, updatedRatings);
+      syncOldStyleTrackRatingButtons(
+        getActiveOldStyleTrackRating(newUserRating, trackKey),
+      );
 
       if (window.currentAlbums) {
         const albumIndex = window.currentAlbums.findIndex(
@@ -6529,24 +6910,24 @@ function toggleHighlightAlbum(email) {
 }
 
 // Scroll the page to the album added by the specified email (mobile UX)
-function scrollToAlbumByEmail(email) {
-  if (!email) return;
-  const albumCard = document.querySelector(
-    `.album-card[data-added-by="${email}"]`,
-  );
-  if (!albumCard) return;
+// function scrollToAlbumByEmail(email) {
+//   if (!email) return;
+//   const albumCard = document.querySelector(
+//     `.album-card[data-added-by="${email}"]`,
+//   );
+//   if (!albumCard) return;
 
-  // Scroll into view and add a temporary highlight class for feedback
-  albumCard.scrollIntoView({
-    behavior: "smooth",
-    block: "center",
-    inline: "nearest",
-  });
-  albumCard.classList.add("album-temp-focus");
-  setTimeout(() => {
-    albumCard.classList.remove("album-temp-focus");
-  }, 1800);
-}
+//   // Scroll into view and add a temporary highlight class for feedback
+//   albumCard.scrollIntoView({
+//     behavior: "smooth",
+//     block: "center",
+//     inline: "nearest",
+//   });
+//   albumCard.classList.add("album-temp-focus");
+//   setTimeout(() => {
+//     albumCard.classList.remove("album-temp-focus");
+//   }, 1800);
+// }
 
 // Mobile scroll-to-top behavior: show when scrolled down and handle click
 document.addEventListener("DOMContentLoaded", () => {
