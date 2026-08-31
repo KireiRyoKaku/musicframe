@@ -4192,23 +4192,23 @@ function updateAlbums(albums) {
 }
 
 // Highlight participant when hovering over their album
-function highlightParticipant(email) {
-  const participant = document.querySelector(
-    `.participant[data-email="${email}"]`,
-  );
-  if (participant) {
-    participant.classList.add("highlighted");
+// function highlightParticipant(email) {
+//   const participant = document.querySelector(
+//     `.participant[data-email="${email}"]`,
+//   );
+//   if (participant) {
+//     participant.classList.add("highlighted");
 
-    // Get participant's color
-    const colorIndex = participant.dataset.colorIndex;
-    const colors = getParticipantColors();
-    const color = colors[colorIndex % colors.length];
+//     // Get participant's color
+//     const colorIndex = participant.dataset.colorIndex;
+//     const colors = getParticipantColors();
+//     const color = colors[colorIndex % colors.length];
 
-    // Apply custom color
-    participant.style.setProperty("--highlight-border", color.border);
-    participant.style.setProperty("--highlight-shadow", color.shadow);
-  }
-}
+//     // Apply custom color
+//     participant.style.setProperty("--highlight-border", color.border);
+//     participant.style.setProperty("--highlight-shadow", color.shadow);
+//   }
+// }
 
 // Equalize album title heights to the tallest title
 function equalizeAlbumTitleHeights() {
@@ -4383,14 +4383,14 @@ function unhighlightParticipant(email) {
 
 // Participant color palette (constant to avoid recreation)
 const PARTICIPANT_COLORS = [
-  { border: "rgba(102, 126, 234, 0.8)", shadow: "rgba(102, 126, 234, 0.6)" }, // Purple
-  { border: "rgba(245, 87, 108, 0.8)", shadow: "rgba(245, 87, 108, 0.6)" }, // Pink
-  { border: "rgba(52, 211, 153, 0.8)", shadow: "rgba(52, 211, 153, 0.6)" }, // Green
-  { border: "rgba(251, 191, 36, 0.8)", shadow: "rgba(251, 191, 36, 0.6)" }, // Yellow
-  { border: "rgba(239, 68, 68, 0.8)", shadow: "rgba(239, 68, 68, 0.6)" }, // Red
-  { border: "rgba(59, 130, 246, 0.8)", shadow: "rgba(59, 130, 246, 0.6)" }, // Blue
+  // { border: "rgba(102, 126, 234, 0.8)", shadow: "rgba(102, 126, 234, 0.6)" }, // Purple
+  // { border: "rgba(245, 87, 108, 0.8)", shadow: "rgba(245, 87, 108, 0.6)" }, // Pink
+  // { border: "rgba(52, 211, 153, 0.8)", shadow: "rgba(52, 211, 153, 0.6)" }, // Green
+  // { border: "rgba(251, 191, 36, 0.8)", shadow: "rgba(251, 191, 36, 0.6)" }, // Yellow
+  // { border: "rgba(239, 68, 68, 0.8)", shadow: "rgba(239, 68, 68, 0.6)" }, // Red
+  // { border: "rgba(59, 130, 246, 0.8)", shadow: "rgba(59, 130, 246, 0.6)" }, // Blue
   { border: "rgba(168, 85, 247, 0.8)", shadow: "rgba(168, 85, 247, 0.6)" }, // Violet
-  { border: "rgba(236, 72, 153, 0.8)", shadow: "rgba(236, 72, 153, 0.6)" }, // Magenta
+  // { border: "rgba(236, 72, 153, 0.8)", shadow: "rgba(236, 72, 153, 0.6)" }, // Magenta
 ];
 
 // Get participant color palette
@@ -6454,14 +6454,14 @@ function toggleHighlightAlbum(email) {
     // Remove highlight from participant
     participant.classList.remove("highlighted");
 
-    // Remove highlight from their album
-    albums.forEach((album) => {
-      if (album.dataset.addedBy === email) {
-        album.classList.remove("highlighted-album");
-        album.style.removeProperty("--highlight-border");
-        album.style.removeProperty("--highlight-shadow");
-      }
-    });
+    //     // Remove highlight from their album
+    //     // albums.forEach((album) => {
+    //     //   if (album.dataset.addedBy === email) {
+    //     //     album.classList.remove("highlighted-album");
+    //     //     album.style.removeProperty("--highlight-border");
+    //     //     album.style.removeProperty("--highlight-shadow");
+    //     //   }
+    //     // });
 
     // Remove highlight from track ratings
     document.querySelectorAll(".track-rating-highlight").forEach((el) => {
@@ -6501,14 +6501,14 @@ function toggleHighlightAlbum(email) {
       participant.style.setProperty("--highlight-shadow", color.shadow);
     }
 
-    // Add highlight to their album
-    albums.forEach((album) => {
-      if (album.dataset.addedBy === email) {
-        album.classList.add("highlighted-album");
-        album.style.setProperty("--highlight-border", color.border);
-        album.style.setProperty("--highlight-shadow", color.shadow);
-      }
-    });
+    //     // Add highlight to their album
+    //     // albums.forEach((album) => {
+    //     //   if (album.dataset.addedBy === email) {
+    //     //     album.classList.add("highlighted-album");
+    //     //     album.style.setProperty("--highlight-border", color.border);
+    //     //     album.style.setProperty("--highlight-shadow", color.shadow);
+    //     //   }
+    //     // });
 
     // Highlight their track ratings - highlight the whole track item
     document.querySelectorAll(".track-rating").forEach((rating) => {
